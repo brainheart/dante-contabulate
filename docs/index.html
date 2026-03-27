@@ -1,0 +1,1912 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Search Dante's Divina Commedia in Italian by word, phrase, or regex across canticles, cantos, terzine, and individual lines. Built from the Project Gutenberg text.">
+  <meta name="author" content="Reinhard Engels">
+  <meta property="og:title" content="Contabulate: Divina Commedia Tabular Search">
+  <meta property="og:description" content="Search Dante's Divina Commedia in Italian by word, phrase, or regex across canticles, cantos, terzine, and individual lines. Built from the Project Gutenberg text.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://brainheart.github.io/dante-contabulate/">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%238b1538' d='M53 8c-12 2-21 11-25 22l-6 17c-1 3-4 5-7 6l-4 2 2-4c1-3 3-6 6-7l17-6C47 34 56 25 58 13l1-6-6 1z'/%3E%3Cpath fill='%238b1538' d='M21 43l-6 6 2 2 6-6z'/%3E%3Cpath fill='%238b1538' d='M31 22l11 11 2-2-11-11z'/%3E%3C/svg%3E">
+  <title>Divina Commedia Contabulate</title>
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <h1><a href="../">Contabulate</a>: Divina Commedia Tabular Search</h1>
+  <p class="muted">Search words, bigrams, or trigrams across canticles, cantos, terzine, and individual lines in Dante's Italian text. Use regex (e.g., <code>^selva$</code>) or plain text. Source text courtesy of <a href="https://www.gutenberg.org/ebooks/1000" target="_blank">Project Gutenberg eBook #1000</a>.</p>
+
+  <div class="tabs is-hidden">
+    <button class="tab-btn active" data-tab="segments">Rows are Contexts</button>
+    <button class="tab-btn" data-tab="lines">Rows are Lines</button>
+  </div>
+
+  <div class="tab-content" id="segmentsTab">
+    <div class="controls">
+      <div class="controls-row">
+        <button id="addColumnBtn" class="add-column-btn" type="button">Add Column</button>
+        <span class="label-strong">for</span>
+        <select id="newTermDisplay" class="control-select">
+          <option value="count" selected># hits</option>
+          <option value="pct">% share</option>
+        </select>
+        <span class="label-strong">by</span>
+        <select id="gran" class="control-select">
+          <option value="genre">Canticle</option>
+          <option value="play">Canto</option>
+          <option value="scene" selected>Terzina</option>
+          <option value="line">Line</option>
+        </select>
+        <span class="label-strong">matching</span>
+        <select id="matchMode" class="control-select">
+          <option value="exact">exact term</option>
+          <option value="regex">regex pattern</option>
+        </select>
+        <span id="ngramModeGroup">
+          <span class="label-strong">in</span>
+          <select id="ngramMode" class="control-select">
+            <option value="1" selected>single words</option>
+            <option value="2">bigrams</option>
+            <option value="3">trigrams</option>
+          </select>
+        </span>
+        <input id="q" class="query-input" type="text" placeholder="Type a search term here, then hit &quot;Add Column&quot;">
+      </div>
+      <div id="termWarning" class="warning is-hidden" role="status" aria-live="polite"></div>
+    </div>
+
+    <details>
+      <summary class="sr"><strong>Options</strong></summary>
+      <div class="options-row">
+        <label><input type="checkbox" class="color-scale-toggle" checked> Color scale numeric columns</label>
+        <label><input type="checkbox" class="highlight-toggle" checked> Highlight matching lines</label>
+        <label><input type="checkbox" id="showZeroRows"> Show zero-hit rows</label>
+        <button id="downloadSegmentsCsv" class="download-btn" type="button">Download CSV</button>
+        <div class="color-scale-options">
+          <label>Palette:
+            <select class="color-scale-palette">
+              <option value="blue-diverging" selected>Gray ↔ Blue (default)</option>
+              <option value="blue-linear">Gray ↔ Blue (alt)</option>
+              <option value="burgundy-gold">Gold ↔ Burgundy</option>
+            </select>
+          </label>
+          <label>Steps:
+            <select class="color-scale-steps">
+              <option value="5" selected>5</option>
+              <option value="7">7</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="color-scale-legend"></div>
+      <div class="deep-link-wrap">
+        <strong>Deep Link:</strong>
+        <a class="deep-link" href="#" target="_blank" rel="noopener"></a>
+      </div>
+    </details>
+
+    <table id="results">
+      <thead><tr id="headRow"></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="segmentsFilterActions" class="filter-actions is-hidden">
+      <button id="clearSegmentsFilters" class="link-btn link-btn-no-padding">Clear all filters for this view</button>
+      <span class="muted filters-info" id="segmentsFiltersInfo"></span>
+    </div>
+    
+    <div class="pagination is-hidden" id="segmentsPagination">
+      <button id="segmentsFirstPage">First</button>
+      <button id="segmentsPrevPage">Prev</button>
+      <span class="page-info" id="segmentsPageInfo">Page 1 of 1</span>
+      <button id="segmentsNextPage">Next</button>
+      <button id="segmentsLastPage">Last</button>
+      <label>
+        Rows per page:
+        <select id="segmentsPageSize">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="250">250</option>
+        </select>
+      </label>
+      <span class="page-info" id="segmentsTotalInfo"></span>
+    </div>
+  </div>
+
+  <div class="tab-content is-hidden" id="linesTab">
+    <div class="controls">
+      <div class="controls-row">
+        <span class="label-strong">Show lines with</span>
+        <select id="linesNgramMode" class="control-select">
+          <option value="1" selected>single word</option>
+          <option value="2">bigram</option>
+          <option value="3">trigram</option>
+        </select>
+        <span class="label-strong">matching the</span>
+        <select id="linesMatchMode" class="control-select">
+          <option value="exact">exact term</option>
+          <option value="regex">regex pattern</option>
+        </select>
+        <input type="text" class="query-input-lines" id="linesQuery" placeholder="e.g., selva, ^amor$, nel mezzo" value="selva">
+      </div>
+    </div>
+
+    <details>
+      <summary class="sr"><strong>Options</strong></summary>
+      <div class="options-row">
+        <label><input type="checkbox" class="color-scale-toggle" checked> Color scale numeric columns</label>
+        <label><input type="checkbox" class="highlight-toggle" checked> Highlight matching lines</label>
+        <button id="downloadLinesCsv" class="download-btn" type="button">Download CSV</button>
+        <div class="color-scale-options">
+          <label>Palette:
+            <select class="color-scale-palette">
+              <option value="blue-diverging" selected>Gray ↔ Blue (default)</option>
+              <option value="blue-linear">Gray ↔ Blue (alt)</option>
+              <option value="burgundy-gold">Gold ↔ Burgundy</option>
+            </select>
+          </label>
+          <label>Steps:
+            <select class="color-scale-steps">
+              <option value="5" selected>5</option>
+              <option value="7">7</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="color-scale-legend"></div>
+      <div class="deep-link-wrap">
+        <strong>Deep Link:</strong>
+        <a class="deep-link" href="#" target="_blank" rel="noopener"></a>
+      </div>
+    </details>
+
+    <table id="linesResults">
+      <thead><tr id="linesHeadRow"></tr></thead>
+      <tbody id="linesTableBody"></tbody>
+    </table>
+    <div id="linesFilterActions" class="filter-actions is-hidden">
+      <button id="clearLinesFilters" class="link-btn link-btn-no-padding">Clear all filters for this view</button>
+      <span class="muted filters-info" id="linesFiltersInfo"></span>
+    </div>
+
+    <div class="pagination is-hidden" id="linesPagination">
+      <button id="linesFirstPage">First</button>
+      <button id="linesPrevPage">Prev</button>
+      <span class="page-info" id="linesPageInfo">Page 1 of 1</span>
+      <button id="linesNextPage">Next</button>
+      <button id="linesLastPage">Last</button>
+      <label>
+        Rows per page:
+        <select id="linesPageSize">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="250">250</option>
+        </select>
+      </label>
+      <span class="page-info" id="linesTotalInfo"></span>
+    </div>
+  </div>
+
+<script src="js/utils.js"></script>
+<script src="js/table-ui.js"></script>
+<script src="js/filter-popover.js"></script>
+<script src="js/color-scale.js"></script>
+<script src="js/play-detail.js"></script>
+<script src="js/lines-tab.js"></script>
+<script>
+(async function() {
+  window.__contabulateReady = false;
+  const q = document.getElementById('q');
+  const gran = document.getElementById('gran');
+  const matchMode = document.getElementById('matchMode');
+  const ngramMode = document.getElementById('ngramMode');
+  const newTermDisplay = document.getElementById('newTermDisplay');
+  const ngramModeGroup = document.getElementById('ngramModeGroup');
+  const theadRow = document.getElementById('headRow');
+  const tbody = document.querySelector('#results tbody');
+  const showZeroRowsToggle = document.getElementById('showZeroRows');
+  const addColumnBtn = document.getElementById('addColumnBtn');
+  const termWarning = document.getElementById('termWarning');
+  const qPlaceholderText = 'Type a search term here, then hit "Add Column"';
+  const addColumnPromptScheduleMs = [3000, 5000, 10000];
+  const allowAddColumnPromptMotion = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  let qPlaceholderTimer = null;
+  let qPlaceholderIndex = 0;
+  let qPlaceholderDidAnimate = false;
+  let addColumnPromptTimer = null;
+  let addColumnPromptStepIndex = 0;
+  let extraTerms = [];
+  let showZeroRows = false;
+  const resultsTable = document.getElementById('results');
+  let rankHintBubbleEl = null;
+  let rankHintBubbleTimer = null;
+
+  function stopQPlaceholderAnimation(clearNow = false) {
+    if (qPlaceholderTimer) {
+      clearTimeout(qPlaceholderTimer);
+      qPlaceholderTimer = null;
+    }
+    if (clearNow && q) q.placeholder = '';
+  }
+  function tickQPlaceholderAnimation() {
+    if (!q) return;
+    if (qPlaceholderDidAnimate) {
+      qPlaceholderTimer = null;
+      return;
+    }
+    if (document.activeElement === q || q.value.trim()) {
+      stopQPlaceholderAnimation(true);
+      return;
+    }
+    if (qPlaceholderIndex < qPlaceholderText.length) {
+      qPlaceholderIndex++;
+      q.placeholder = qPlaceholderText.slice(0, qPlaceholderIndex);
+      qPlaceholderTimer = setTimeout(tickQPlaceholderAnimation, 55);
+      return;
+    }
+    q.placeholder = qPlaceholderText;
+    qPlaceholderDidAnimate = true;
+    qPlaceholderTimer = null;
+  }
+  function startQPlaceholderAnimation(reset = false) {
+    if (!q || document.activeElement === q || q.value.trim()) return;
+    stopQPlaceholderAnimation(false);
+    if (qPlaceholderDidAnimate) {
+      q.placeholder = qPlaceholderText;
+      return;
+    }
+    if (reset) {
+      qPlaceholderIndex = 0;
+      q.placeholder = '';
+    }
+    tickQPlaceholderAnimation();
+  }
+  function clearAddColumnPrompt(removeClass = true) {
+    if (addColumnPromptTimer) {
+      clearTimeout(addColumnPromptTimer);
+      addColumnPromptTimer = null;
+    }
+    addColumnPromptStepIndex = 0;
+    if (removeClass && addColumnBtn) addColumnBtn.classList.remove('idle-shimmer');
+  }
+  function scheduleNextAddColumnPrompt() {
+    if (!allowAddColumnPromptMotion || !addColumnBtn || !q || !q.value.trim()) return;
+    if (addColumnPromptStepIndex >= addColumnPromptScheduleMs.length) return;
+    const delayMs = addColumnPromptScheduleMs[addColumnPromptStepIndex];
+    addColumnPromptStepIndex += 1;
+    addColumnPromptTimer = setTimeout(runAddColumnPrompt, delayMs);
+  }
+  function runAddColumnPrompt() {
+    addColumnPromptTimer = null;
+    if (!allowAddColumnPromptMotion || !addColumnBtn || !q || !q.value.trim()) return;
+    addColumnBtn.classList.remove('idle-shimmer');
+    // Restart the one-shot sheen when the user pauses after editing.
+    void addColumnBtn.offsetWidth;
+    addColumnBtn.classList.add('idle-shimmer');
+    scheduleNextAddColumnPrompt();
+  }
+  function scheduleAddColumnPrompt() {
+    if (!allowAddColumnPromptMotion || !addColumnBtn || !q) return;
+    clearAddColumnPrompt(true);
+    if (!q.value.trim()) return;
+    scheduleNextAddColumnPrompt();
+  }
+  if (q) {
+    startQPlaceholderAnimation(true);
+    q.addEventListener('focus', () => {
+      stopQPlaceholderAnimation(true);
+    });
+    q.addEventListener('blur', () => {
+      if (!q.value.trim()) startQPlaceholderAnimation(false);
+    });
+    q.addEventListener('input', () => {
+      if (q.value.trim()) {
+        stopQPlaceholderAnimation(true);
+      } else if (document.activeElement !== q) {
+        startQPlaceholderAnimation(false);
+      }
+    });
+  }
+  if (addColumnBtn) {
+    addColumnBtn.addEventListener('animationend', (e) => {
+      if (e.animationName === 'addColumnShimmer') addColumnBtn.classList.remove('idle-shimmer');
+    });
+  }
+
+  // Shared table UI helpers are provided by docs/js/table-ui.js
+  const applyColumnOrder = window.applyColumnOrder;
+  const moveKeyBeforeTarget = window.moveKeyBeforeTarget;
+  const wireHeaderDrag = window.wireHeaderDrag;
+  const getSortClickSuppressedUntil = window.getSortClickSuppressedUntil;
+  const showFilterPopover = window.showFilterPopover;
+  const closeFilterPopover = window.closeFilterPopover;
+  const createLinesTabController = window.createLinesTabController;
+
+  // Color scale/highlight helpers are provided by docs/js/color-scale.js
+  const colorScaleState = window.colorScaleState;
+  const syncColorScaleToggles = window.syncColorScaleToggles;
+  const syncColorScaleOptions = window.syncColorScaleOptions;
+  const setColorScaleEnabled = window.setColorScaleEnabled;
+  const syncHighlightToggles = window.syncHighlightToggles;
+  const setHighlightEnabled = window.setHighlightEnabled;
+  const applyOrClear = window.applyOrClear;
+  const applyColorScalesForVisibleTables = window.applyColorScalesForVisibleTables;
+  const renderAllLegends = window.renderAllLegends;
+  const setElementHidden = window.setElementHidden || ((el, hidden) => {
+    if (!el || !el.classList) return;
+    el.classList.toggle('is-hidden', !!hidden);
+  });
+  function normalizeTermN(value) {
+    const n = parseInt(value, 10);
+    return (n === 1 || n === 2 || n === 3) ? n : null;
+  }
+  function getSelectedNgramModeValue() {
+    return normalizeTermN(ngramMode && ngramMode.value) || 1;
+  }
+  function countTermWords(text) {
+    return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+  }
+  function inferExactTermN(text) {
+    const count = countTermWords(text);
+    return (count >= 1 && count <= 3) ? count : null;
+  }
+  function getBaseNgramLabel(n) {
+    if (n === 1) return '# words';
+    if (n === 2) return '# bigrams';
+    if (n === 3) return '# trigrams';
+    return '# ngrams';
+  }
+  function showTermWarning(message) {
+    if (!termWarning) return;
+    termWarning.textContent = message || '';
+    setElementHidden(termWarning, !message);
+  }
+  function clearTermWarning() {
+    showTermWarning('');
+  }
+  function updateSegmentsMatchModeUI() {
+    const isRegex = matchMode && matchMode.value === 'regex';
+    setElementHidden(ngramModeGroup, !isRegex);
+  }
+  function normalizeTermMode(mode) {
+    return mode === 'regex' ? 'regex' : 'exact';
+  }
+  function normalizeTermDisplay(value) {
+    return value === 'pct' ? 'pct' : 'count';
+  }
+  function getEffectiveTermDisplay(termSpec) {
+    if (gran && gran.value === 'line') return 'count';
+    return normalizeTermDisplay(termSpec && termSpec.display);
+  }
+  function toTermSpec(value, fallbackMode = 'exact', fallbackN = getSelectedNgramModeValue()) {
+    if (value == null) return null;
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (!text) return null;
+      const mode = normalizeTermMode(fallbackMode);
+      const n = mode === 'regex' ? fallbackN : inferExactTermN(text);
+      return { text, mode, n, display: 'count' };
+    }
+    if (typeof value === 'object') {
+      const text = String(value.text ?? value.t ?? '').trim();
+      if (!text) return null;
+      const mode = normalizeTermMode(value.mode ?? value.m ?? fallbackMode);
+      const explicitN = normalizeTermN(value.n ?? value.ngram ?? value.nm);
+      const inferredN = inferExactTermN(text);
+      return {
+        text,
+        mode,
+        n: mode === 'regex' ? (explicitN || fallbackN) : inferredN,
+        display: normalizeTermDisplay(value.display ?? value.d)
+      };
+    }
+    const text = String(value).trim();
+    if (!text) return null;
+    const mode = normalizeTermMode(fallbackMode);
+    const n = mode === 'regex' ? fallbackN : inferExactTermN(text);
+    return { text, mode, n, display: 'count' };
+  }
+  function cloneTermSpec(value, fallbackMode = 'exact', fallbackN = getSelectedNgramModeValue()) {
+    const spec = toTermSpec(value, fallbackMode, fallbackN);
+    return spec ? { text: spec.text, mode: spec.mode, n: spec.n, display: spec.display } : null;
+  }
+  function termSpecKey(value, fallbackMode = 'exact', fallbackN = getSelectedNgramModeValue()) {
+    const spec = toTermSpec(value, fallbackMode, fallbackN);
+    if (!spec) return '';
+    const keyN = normalizeTermN(spec.n) || 0;
+    const display = normalizeTermDisplay(spec.display);
+    if (spec.mode === 'regex') return `regex:${keyN}:${spec.text.trim()}:${display}`;
+    return `exact:${keyN}:${normalizeTerm(spec.text)}:${display}`;
+  }
+  function formatTermSpecForHeader(value) {
+    const spec = toTermSpec(value, 'exact');
+    if (!spec) return '""';
+    return spec.mode === 'regex' ? `/${spec.text}/` : `"${spec.text}"`;
+  }
+  function pruneExtraTermsAgainstPrimary() {
+    // Legacy function name retained: chips are now the canonical term list.
+    const seen = new Set();
+    const filtered = [];
+    extraTerms.forEach((t) => {
+      const spec = toTermSpec(t, matchMode.value);
+      const key = termSpecKey(spec);
+      if (!spec || !spec.n || !key || seen.has(key)) return;
+      seen.add(key);
+      filtered.push(spec);
+    });
+    if (filtered.length !== extraTerms.length) {
+      extraTerms = filtered;
+      renderExtraTerms();
+    }
+  }
+  function getActiveTerms() {
+    return extraTerms.map(t => cloneTermSpec(t, matchMode.value)).filter(spec => spec && spec.n);
+  }
+  function getActiveTermsStateParts() {
+    const terms = getActiveTerms();
+    return {
+      primary: terms[0] || null,
+      extras: terms.slice(1)
+    };
+  }
+  function setActiveTermsFromRestoredState(primaryTerm, extraTermList, preserveInputValue = true) {
+    const seen = new Set();
+    const merged = [];
+    const add = (term) => {
+      const spec = toTermSpec(term, matchMode.value);
+      const key = termSpecKey(spec);
+      if (!spec || !spec.n || !key || seen.has(key)) return;
+      seen.add(key);
+      merged.push(spec);
+    };
+    add(primaryTerm);
+    (extraTermList || []).forEach(add);
+    extraTerms = merged;
+    renderExtraTerms();
+    if (!preserveInputValue) q.value = '';
+  }
+  function renderExtraTerms() {
+    updateDeepLink();
+  }
+  function removeExtraTerm(idx) {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= extraTerms.length) return;
+    extraTerms.splice(idx, 1);
+    renderExtraTerms();
+    doSearch();
+  }
+  function addExtraTerm(term) {
+    const spec = toTermSpec(term, matchMode.value);
+    if (spec && spec.mode === 'exact' && !spec.n) {
+      showTermWarning('Exact term columns are limited to 3 words. Use regex mode for longer patterns.');
+      return false;
+    }
+    if (!spec) return false;
+    spec.display = normalizeTermDisplay(newTermDisplay && newTermDisplay.value);
+    clearTermWarning();
+    const key = termSpecKey(spec);
+    const existing = extraTerms.map(t => termSpecKey(t, matchMode.value));
+    if (!key || existing.includes(key)) return false;
+    extraTerms.push(spec);
+    renderExtraTerms();
+    doSearch(extraTerms.length - 1);
+    return true;
+  }
+  // Sort state defaults (declare before deep-link logic uses them)
+  let sortKey = null, sortDir = 'desc';
+  let linesTabController = null;
+  let segmentsColumnOrder = [];
+  let segmentsColumnDefs = [];
+  // Column filters maps (declare early for deep-link)
+  // Scope segments filters by current granularity (play/genre/act/scene/line/character)
+  const segmentsFiltersByGran = new Map(); // gran -> Map(columnKey -> filter)
+  function getSegmentsFiltersMap() {
+    const g = (typeof gran !== 'undefined' && gran && gran.value) ? gran.value : 'scene';
+    if (!segmentsFiltersByGran.has(g)) segmentsFiltersByGran.set(g, new Map());
+    return segmentsFiltersByGran.get(g);
+  }
+  // Segments pagination and rows (declare early for deep-link)
+  let segmentsCurrentPage = 1;
+  let segmentsPageSize = 50;
+  let segmentsAllRows = [];
+  let lastSegmentsBaseRows = [];
+  function normalizeSegmentsColumnKey(key) {
+    return key === 'ref_code' ? 'location' : key;
+  }
+  // Deep link: human-readable query params (fallback to legacy base64 `state`)
+  function buildQueryParamsFromState() {
+    const p = new URLSearchParams();
+    // Only segments are supported for deep links currently
+    // Display
+    p.set('cs', colorScaleState.colorScaleEnabled ? '1' : '0');
+    p.set('zr', showZeroRows ? '1' : '0');
+    // palette and steps omitted for cleaner URLs
+    p.set('hl', colorScaleState.highlightEnabled ? '1' : '0');
+    // Segments
+    const segTermState = getActiveTermsStateParts();
+    p.set('q', segTermState.primary ? segTermState.primary.text : '');
+    p.set('nm', ngramMode.value);
+    p.set('gran', gran.value);
+    p.set('mm', matchMode.value);
+    const allTermSpecs = [segTermState.primary, ...segTermState.extras].filter(Boolean);
+    const extras = segTermState.extras.map(t => (t && t.text ? t.text.trim() : '')).filter(Boolean);
+    const termSpecsParam = encodeTermSpecsParam(allTermSpecs);
+    if (termSpecsParam) p.set('ts', termSpecsParam);
+    if (extras.length) {
+      try {
+        p.set('qt', encodeURIComponent(JSON.stringify(extras)));
+      } catch (e) {
+        // fallback to legacy join if JSON stringify fails (shouldn't)
+        p.set('qt', extras.join('|'));
+      }
+    }
+    if (sortKey) p.set('sk', sortKey);
+    if (sortDir) p.set('sd', sortDir);
+    if (segmentsColumnOrder.length) p.set('co', segmentsColumnOrder.join(','));
+    // Segment column filters (only for current granularity)
+    const segFilters = getSegmentsFiltersMap();
+    for (const [key, v] of segFilters.entries()) {
+      if (v.type === 'number') {
+        const min = (v.min ?? '');
+        const max = (v.max ?? '');
+        p.set('s_fn_' + key, `${min}~${max}`);
+      } else if (v.type === 'text') {
+        p.set('s_ft_' + key, v.pattern ?? '');
+      }
+    }
+    return p;
+  }
+  let appliedDeepLinkState = false;
+  // Legacy base64 state decoder for backward compatibility
+  function decodeState(s) {
+    try {
+      const b64 = (s || '').replace(/ /g, '+');
+      return JSON.parse(decodeURIComponent(escape(atob(b64))));
+    } catch(e) { return null; }
+  }
+  function decodeExtrasParam(raw) {
+    if (!raw) return [];
+    // New format: URL-encoded JSON array
+    try {
+      const decoded = decodeURIComponent(raw);
+      const arr = JSON.parse(decoded);
+      if (Array.isArray(arr)) return arr;
+    } catch(e) { /* fall through to legacy */ }
+    // Legacy: pipe-separated string
+    return raw.split('|').map(t => t.trim()).filter(Boolean);
+  }
+  function encodeTermSpecsParam(termSpecs) {
+    const compact = (termSpecs || [])
+      .map(t => toTermSpec(t, 'exact'))
+      .filter(Boolean)
+      .map(t => ({ t: t.text, m: t.mode, n: t.n, d: t.display }));
+    if (!compact.length) return '';
+    try {
+      return encodeURIComponent(JSON.stringify(compact));
+    } catch (e) {
+      return '';
+    }
+  }
+  function decodeTermSpecsParam(raw) {
+    if (!raw) return [];
+    try {
+      const decoded = decodeURIComponent(raw);
+      const arr = JSON.parse(decoded);
+      if (!Array.isArray(arr)) return [];
+      return arr.map(t => toTermSpec(t, 'exact')).filter(Boolean);
+    } catch (e) {
+      return [];
+    }
+  }
+  function arrayToMap(arr) {
+    const m = new Map();
+    if (!Array.isArray(arr)) return m;
+    for (const it of arr) {
+      if (!it || !it.key) continue;
+      if (it.type === 'number') m.set(it.key, { type:'number', min: it.min ?? '', max: it.max ?? '' });
+      else if (it.type === 'text') m.set(it.key, { type:'text', pattern: it.pattern ?? '' });
+    }
+    return m;
+  }
+  function updateDeepLink() {
+    const p = buildQueryParamsFromState();
+    const url = location.origin + location.pathname + '?' + p.toString();
+    document.querySelectorAll('.deep-link').forEach(a => { a.href = url; a.textContent = url; });
+  }
+  function updateSegmentsFilterActions() {
+    const container = document.getElementById('segmentsFilterActions');
+    if (!container) return;
+    const count = getSegmentsFiltersMap().size;
+    if (count > 0) {
+      setElementHidden(container, false);
+      const info = document.getElementById('segmentsFiltersInfo');
+      if (info) info.textContent = `(${count} active filter${count>1?'s':''})`;
+    } else {
+      setElementHidden(container, true);
+    }
+  }
+  // Tab switching
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const segmentsTab = document.getElementById('segmentsTab');
+  const linesTab = document.getElementById('linesTab');
+  
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetTab = btn.dataset.tab;
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      setElementHidden(segmentsTab, targetTab !== 'segments');
+      setElementHidden(linesTab, targetTab !== 'lines');
+      updateDeepLink();
+    });
+  });
+
+  async function loadJSON(path) {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`);
+    return res.json();
+  }
+
+  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null;
+  try {
+    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig] = await Promise.all([
+      loadJSON('data/chunks.json'),
+      loadJSON('data/tokens.json'),
+      loadJSON('data/tokens2.json'),
+      loadJSON('data/tokens3.json'),
+      loadJSON('data/plays.json'),
+      loadJSON('data/characters.json'),
+      loadJSON('data/tokens_char.json'),
+      loadJSON('data/tokens_char2.json'),
+      loadJSON('data/tokens_char3.json'),
+      loadJSON('data/character_name_filter_config.json').catch(() => null),
+    ]);
+  } catch(e) {
+    console.error('Failed to load data:', e);
+    return;
+  }
+
+
+  // Load line data
+  try {
+    allLines = await loadJSON('lines/all_lines.json');
+  } catch(e) {
+    console.warn('Line data not available:', e);
+  }
+
+  const chunkById = new Map(chunks.map(r => [r.scene_id, r]));
+  const playsById = new Map(plays.map(p => [p.play_id, p]));
+  const charactersById = new Map(characters.map(c => [c.character_id, c]));
+
+  // Lines tab controller — loaded from js/lines-tab.js
+  if (typeof createLinesTabController === 'function') {
+    linesTabController = createLinesTabController({
+      getAllLines: () => allLines,
+      getPlaysById: () => playsById,
+      colorScaleState: colorScaleState,
+      showFilterPopover: showFilterPopover,
+      applyOrClear: applyOrClear,
+      updateDeepLink: updateDeepLink
+    });
+    linesTabController.init();
+  }
+
+  // Name normalization util used elsewhere
+
+  renderExtraTerms();
+
+  // Precompute act/play totals (must be before applyStateFromURL which may call doSearch→denomFor)
+  const actTotals = new Map();
+  const playTotals = new Map();
+  for (const r of chunks) {
+    const k = `${r.play_id}:${r.act}`;
+    actTotals.set(k, (actTotals.get(k)||0) + (r.total_words||0));
+    playTotals.set(r.play_id, (playTotals.get(r.play_id)||0) + (r.total_words||0));
+  }
+
+  // Apply state from deep link if present
+  (function applyStateFromURL(){
+    const sp = new URLSearchParams(location.search);
+    // New readable params first
+    if (sp.has('tab') || sp.has('q') || sp.has('ts') || sp.has('l_q') || sp.has('co')) {
+      appliedDeepLinkState = true;
+      try {
+        // Display
+        if (sp.has('cs')) colorScaleState.colorScaleEnabled = sp.get('cs') === '1';
+        // ignore palette and steps from URL to keep behavior consistent and URLs clean
+        if (sp.has('hl')) colorScaleState.highlightEnabled = sp.get('hl') === '1';
+        syncColorScaleToggles(); syncColorScaleOptions(); syncHighlightToggles();
+        // Tab (ignored; segments only)
+        // Segments
+        if (sp.has('q')) q.value = sp.get('q');
+        else if (sp.has('ts')) q.value = '';
+        if (sp.has('nm')) ngramMode.value = sp.get('nm');
+        if (sp.has('gran')) gran.value = sp.get('gran');
+        if (sp.has('mm')) matchMode.value = sp.get('mm');
+        if (sp.has('zr')) {
+          showZeroRows = sp.get('zr') === '1';
+          if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+        }
+        if (sp.has('ts')) {
+          setActiveTermsFromRestoredState(null, decodeTermSpecsParam(sp.get('ts')), true);
+        } else {
+          const restoredExtras = sp.has('qt') ? decodeExtrasParam(sp.get('qt')) : [];
+          setActiveTermsFromRestoredState(sp.has('q') ? q.value : '', restoredExtras, true);
+        }
+        if (sp.has('sk')) sortKey = normalizeSegmentsColumnKey(sp.get('sk'));
+        if (sp.has('sd')) sortDir = sp.get('sd');
+        if (sp.has('co')) {
+          segmentsColumnOrder = sp.get('co').split(',').map(s => normalizeSegmentsColumnKey(s.trim())).filter(Boolean);
+        }
+        // Clear filters only for current granularity
+        getSegmentsFiltersMap().clear();
+        for (const [k, v] of sp.entries()) {
+          if (k.startsWith('s_fn_')) {
+            const key = normalizeSegmentsColumnKey(k.slice(5));
+            const [min, max] = (v || '').split('~');
+            getSegmentsFiltersMap().set(key, { type:'number', min, max });
+          } else if (k.startsWith('s_ft_')) {
+            const key = normalizeSegmentsColumnKey(k.slice(5));
+            getSegmentsFiltersMap().set(key, { type:'text', pattern: v || '' });
+          }
+        }
+      } catch(e) { /* continue to finally */ }
+        updateSegmentsMatchModeUI();
+        // Trigger render for segments regardless
+        doSearch();
+        applyColorScalesForVisibleTables();
+        updateDeepLink();
+      return;
+    }
+    // Legacy base64 fallback
+    const enc = sp.get('state');
+    if (!enc) { updateDeepLink(); return; }
+    const st = decodeState(enc);
+    if (!st) { updateDeepLink(); return; }
+    try {
+      // Display
+      if (st.display) {
+        if (typeof st.display.colorScaleEnabled === 'boolean') colorScaleState.colorScaleEnabled = st.display.colorScaleEnabled;
+        if (st.display.colorScalePalette) colorScaleState.colorScalePalette = st.display.colorScalePalette;
+        if (st.display.colorScaleSteps) colorScaleState.colorScaleSteps = st.display.colorScaleSteps;
+        if (typeof st.display.highlightEnabled === 'boolean') colorScaleState.highlightEnabled = st.display.highlightEnabled;
+        syncColorScaleToggles(); syncColorScaleOptions(); syncHighlightToggles();
+      }
+      // Tab
+      if (st.tab) {
+        const btn = document.querySelector(`.tab-btn[data-tab="${st.tab}"]`);
+        if (btn) btn.click();
+      }
+      // Segments
+      if (st.segments) {
+      if (st.segments.q != null) q.value = st.segments.q;
+      if (st.segments.ngramMode) ngramMode.value = st.segments.ngramMode;
+      if (st.segments.gran) gran.value = st.segments.gran;
+      if (st.segments.matchMode) matchMode.value = st.segments.matchMode;
+      if (typeof st.segments.showZeroRows === 'boolean') {
+        showZeroRows = st.segments.showZeroRows;
+        if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+      }
+      if (Array.isArray(st.segments.extraTerms)) {
+        extraTerms = st.segments.extraTerms.filter(Boolean);
+      }
+        setActiveTermsFromRestoredState(st.segments.q != null ? q.value : '', extraTerms, true);
+        if (st.segments.sortKey) sortKey = normalizeSegmentsColumnKey(st.segments.sortKey);
+        if (st.segments.sortDir) sortDir = st.segments.sortDir;
+        // Clear and set filters only for current granularity
+        getSegmentsFiltersMap().clear();
+        if (st.segments.filters) {
+          const m = arrayToMap(st.segments.filters);
+          for (const [k,v] of m.entries()) getSegmentsFiltersMap().set(normalizeSegmentsColumnKey(k), v);
+        }
+      }
+      // Lines
+      if (st.lines) {
+        const lq = document.getElementById('linesQuery');
+        if (st.lines.q != null) lq.value = st.lines.q;
+        const ln = document.getElementById('linesNgramMode');
+        if (st.lines.ngramMode) ln.value = st.lines.ngramMode;
+        const lm = document.getElementById('linesMatchMode');
+        if (st.lines.matchMode) lm.value = st.lines.matchMode;
+        if (linesTabController && (st.lines.sortKey || st.lines.sortDir)) {
+          linesTabController.setSortState(st.lines.sortKey, st.lines.sortDir);
+        }
+        if (linesTabController) linesTabController.replaceColumnFilters(new Map());
+        if (st.lines.filters) {
+          const m2 = arrayToMap(st.lines.filters);
+          if (linesTabController) linesTabController.replaceColumnFilters(m2);
+        }
+      }
+      updateSegmentsMatchModeUI();
+      // Trigger renders
+      doSearch();
+      const lqv = document.getElementById('linesQuery').value.trim(); if (lqv) doLinesSearch();
+      applyColorScalesForVisibleTables();
+      appliedDeepLinkState = true;
+    } catch(e) { /* ignore */ }
+    updateDeepLink();
+  })();
+  
+  // No selectedPlayIds — include all plays; use header filters to refine
+  function downloadSegmentsCsvAll(filename) {
+    if (!segmentsAllRows || segmentsAllRows.length === 0) return;
+    const cols = Array.from(theadRow.children).map(th => ({
+      key: th.dataset.key,
+      label: (th.childNodes[0]?.textContent || th.textContent || '').replace('⚙','').trim()
+    }));
+    if (cols.length === 0) return;
+    const rows = [cols.map(c => c.label)];
+    for (const r of segmentsAllRows) {
+      rows.push(cols.map(c => {
+        const k = c.key;
+        if (k === 'act' && r.act_label) return r.act_label;
+        if (k === 'scene' && r.scene_label) return r.scene_label;
+        if (k === 'line' && r.line != null) return r.line;
+        if (k === 'pct' || k.endsWith('_pct')) return fmtPct(r[k] || 0);
+        return r[k] ?? '';
+      }));
+    }
+    downloadCsv(filename, rows);
+  }
+  function downloadLinesCsvAll(filename) {
+    if (!linesTabController) return;
+    linesTabController.downloadCsvAll(filename);
+  }
+
+  // Simple debounce helper for responsive UI without spamming renders
+
+
+  // Pagination state (segments vars declared earlier to support deep-link init)
+  // actTotals and playTotals moved before applyStateFromURL (see above)
+  // Column filters state (moved earlier)
+  
+  function setHeaders(cols, preserveOrder){
+    segmentsColumnDefs = Array.isArray(cols) ? cols.slice() : [];
+    if (!preserveOrder) segmentsColumnOrder = [];
+    const orderedCols = applyColumnOrder(segmentsColumnDefs, segmentsColumnOrder);
+    segmentsColumnOrder = orderedCols.map(c => c.key);
+    theadRow.innerHTML='';
+    orderedCols.forEach(c => {
+      const th = document.createElement('th');
+      th.dataset.label = c.label;
+      th.dataset.key = c.key;
+      th.dataset.type = c.type || 'text';
+      th.title = 'Click to sort';
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'th-label';
+      labelSpan.textContent = c.label;
+      th.appendChild(labelSpan);
+      th.addEventListener('click', () => {
+        if (Date.now() < getSortClickSuppressedUntil()) return;
+        if (sortKey === c.key) sortDir = (sortDir === 'asc' ? 'desc' : 'asc');
+        else { sortKey = c.key; sortDir = c.defaultDir || 'desc'; }
+        segmentsAllRows = sortRows(segmentsAllRows);
+        segmentsCurrentPage = 1;
+        renderSegmentsPage();
+      });
+      if (Number.isInteger(c.termIdx)) {
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'term-col-remove';
+        removeBtn.textContent = '×';
+        removeBtn.title = `Remove ${c.label}`;
+        removeBtn.setAttribute('aria-label', `Remove ${c.label}`);
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeExtraTerm(c.termIdx);
+        });
+        th.appendChild(removeBtn);
+      }
+      // Add filter icon
+      const icon = document.createElement('span');
+      icon.className = 'filter-icon';
+      icon.textContent = '⚙';
+      icon.title = 'Filter this column';
+      icon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showFilterPopover(th, c.key, (c.type||'text'), 'segments');
+      });
+      th.appendChild(icon);
+      wireHeaderDrag(th, {
+        tableType: 'segments',
+        selector: '#results thead th',
+        onDropReorder: (sourceKey, targetKey) => {
+          segmentsColumnOrder = moveKeyBeforeTarget(segmentsColumnOrder, sourceKey, targetKey);
+          setHeaders(segmentsColumnDefs, true);
+          renderSegmentsPage();
+        }
+      });
+      theadRow.appendChild(th);
+    });
+    updateSortIndicators();
+  }
+  
+  function updateSortIndicators(){
+    theadRow.querySelectorAll('th').forEach(th => {
+      th.classList.remove('sorted-asc', 'sorted-desc');
+      if (th.dataset.key === sortKey) {
+        th.classList.add(sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      }
+    });
+  }
+  function sortRows(rows){
+    if (!sortKey) return rows;
+    const parseIdParts = (id) => {
+      const s = String(id || '');
+      const parts = s.split('.');
+      const abbr = parts[0] || '';
+      const act = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
+      const scene = parts.length > 2 ? parseInt(parts[2], 10) || 0 : 0;
+      const line = parts.length > 3 ? parseInt(parts[3], 10) || 0 : 0;
+      return { abbr, act, scene, line };
+    };
+    rows.sort((a,b) => {
+      const av = a[sortKey], bv = b[sortKey];
+      if (sortKey === 'id') {
+        const aa = parseIdParts(av);
+        const bb = parseIdParts(bv);
+        let cmp = aa.abbr.localeCompare(bb.abbr);
+        if (cmp === 0) cmp = aa.act - bb.act;
+        if (cmp === 0) cmp = aa.scene - bb.scene;
+        if (cmp === 0) cmp = aa.line - bb.line;
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+      }
+      return sortDir === 'asc' ? (av - bv) : (bv - av);
+    });
+    return rows;
+  }
+
+  function getHeaderLabelText(th) {
+    if (!th) return '';
+    const raw = (th.childNodes[0] && th.childNodes[0].textContent)
+      ? th.childNodes[0].textContent
+      : (th.textContent || '');
+    return raw.replace('⚙', '').trim();
+  }
+
+  function buildNumericRankIndex(rows, colDefs) {
+    const rankIndex = new Map();
+    if (!Array.isArray(rows) || rows.length === 0 || !Array.isArray(colDefs)) return rankIndex;
+
+    colDefs.forEach((col) => {
+      if (!col || col.type !== 'number' || !col.key) return;
+      const valueCounts = new Map();
+      let total = 0;
+      rows.forEach((row) => {
+        const value = Number(row[col.key]);
+        if (!Number.isFinite(value)) return;
+        valueCounts.set(value, (valueCounts.get(value) || 0) + 1);
+        total++;
+      });
+      if (total === 0) return;
+
+      const sortedValues = Array.from(valueCounts.keys()).sort((a, b) => b - a);
+      const ranksByValue = new Map();
+      let seen = 0;
+      sortedValues.forEach((value) => {
+        const tieCount = valueCounts.get(value) || 0;
+        const rank = seen + 1;
+        ranksByValue.set(value, { rank, tieCount });
+        seen += tieCount;
+      });
+      rankIndex.set(col.key, { label: col.label || col.key, total, ranksByValue });
+    });
+
+    return rankIndex;
+  }
+
+  function getNumericRankHint(rankIndex, key, rawValue) {
+    if (!rankIndex || !rankIndex.has(key)) return '';
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return '';
+    const col = rankIndex.get(key);
+    const meta = col && col.ranksByValue ? col.ranksByValue.get(value) : null;
+    if (!meta) return '';
+    const tieNote = meta.tieCount > 1 ? ` (tied with ${meta.tieCount} rows)` : '';
+    return `${col.label} rank: #${meta.rank} of ${col.total}${tieNote}`;
+  }
+
+  function isNoHoverDevice() {
+    return !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+  }
+
+  function ensureRankHintBubble() {
+    if (rankHintBubbleEl) return rankHintBubbleEl;
+    rankHintBubbleEl = document.createElement('div');
+    rankHintBubbleEl.className = 'rank-hint-bubble';
+    rankHintBubbleEl.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(rankHintBubbleEl);
+    return rankHintBubbleEl;
+  }
+
+  function hideRankHintBubble() {
+    if (!rankHintBubbleEl) return;
+    rankHintBubbleEl.classList.remove('visible');
+    if (rankHintBubbleTimer) {
+      clearTimeout(rankHintBubbleTimer);
+      rankHintBubbleTimer = null;
+    }
+  }
+
+  function showRankHintBubbleForCell(cell, message) {
+    if (!cell || !message) return;
+    const bubble = ensureRankHintBubble();
+    bubble.textContent = message;
+    bubble.style.left = '8px';
+    bubble.style.top = '8px';
+    bubble.classList.add('visible');
+
+    const cellRect = cell.getBoundingClientRect();
+    const bubbleRect = bubble.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    let left = cellRect.left + ((cellRect.width - bubbleRect.width) / 2);
+    left = Math.max(8, Math.min(left, vw - bubbleRect.width - 8));
+    let top = cellRect.top - bubbleRect.height - 8;
+    if (top < 8) top = cellRect.bottom + 8;
+    if (top + bubbleRect.height > vh - 8) top = Math.max(8, vh - bubbleRect.height - 8);
+    bubble.style.left = `${Math.round(left)}px`;
+    bubble.style.top = `${Math.round(top)}px`;
+
+    if (rankHintBubbleTimer) clearTimeout(rankHintBubbleTimer);
+    rankHintBubbleTimer = setTimeout(() => {
+      hideRankHintBubble();
+    }, 2200);
+  }
+
+  function ensureSegmentsSortForColumns(cols, defaultKey, defaultDir = 'desc') {
+    const keys = new Set((cols || []).map(c => c && c.key).filter(Boolean));
+    if (sortKey && keys.has(sortKey)) {
+      if (sortDir !== 'asc' && sortDir !== 'desc') sortDir = defaultDir;
+      return;
+    }
+    const fallbackKey = (defaultKey && keys.has(defaultKey))
+      ? defaultKey
+      : (((cols || []).find(c => c && c.key) || {}).key || null);
+    sortKey = fallbackKey;
+    sortDir = defaultDir;
+  }
+
+  function applyPreferredTermSort(termCols, preferredTermIndex) {
+    if (!Number.isInteger(preferredTermIndex) || preferredTermIndex < 0) return false;
+    const preferredPrefix = `t${preferredTermIndex}_`;
+    const preferredKey = `t${preferredTermIndex}_count`;
+    const preferredCol = (termCols || []).find(c => c && c.key === preferredKey)
+      || (termCols || []).find(c => c && typeof c.key === 'string' && c.key.startsWith(preferredPrefix));
+    if (!preferredCol) return false;
+    sortKey = preferredCol.key;
+    sortDir = 'desc';
+    return true;
+  }
+
+  function denomFor(n, levelKey, meta){
+    const tw = (levelKey==='scene') ? (meta.total_words||0)
+               : (levelKey==='act') ? (actTotals.get(`${meta.play_id}:${meta.act}`)||0)
+               : (levelKey==='play') ? (playTotals.get(meta.play_id)||0)
+               : (levelKey==='genre') ? ((meta && meta.total_words) || 0)
+               : (levelKey==='character') ? (meta.total_words_spoken||0) : 0;
+    return Math.max(0, tw - (n-1));
+  }
+
+  function aggregatePostings(postingsArray, n) {
+    // Merge multiple token postings (for regex matches)
+    const merged = new Map();
+    for (const postings of postingsArray) {
+      for (const [id, count] of postings) {
+        merged.set(id, (merged.get(id) || 0) + count);
+      }
+    }
+    return Array.from(merged.entries());
+  }
+
+  function buildRowsForTerms(terms, preferredSortTermIndex = null){
+    const granVal = gran.value;
+    const activeTerms = (terms || []).map(t => toTermSpec(t, matchMode.value)).filter(Boolean);
+    const hasTerms = activeTerms.length > 0;
+    const baseN = normalizeTermN(activeTerms[0] && activeTerms[0].n) || getSelectedNgramModeValue();
+
+    const termKeys = activeTerms.map((_, i) => `t${i}`);
+    function getIndexForN(n) {
+      const termN = normalizeTermN(n) || 1;
+      return (granVal === 'character')
+        ? (termN === 1 ? tokensChar : termN === 2 ? tokensChar2 : tokensChar3)
+        : (termN === 1 ? tokens : termN === 2 ? tokens2 : tokens3);
+    }
+    function getRowNgramCount(totalWords) {
+      return Math.max(0, (totalWords || 0) - (baseN - 1));
+    }
+    function getBaseCountLabel() {
+      return getBaseNgramLabel(1);
+    }
+    function padLocationPart(value) {
+      const num = Number(value);
+      return String(Number.isFinite(num) ? num : 0).padStart(3, '0');
+    }
+    function getBookLocation(play) {
+      if (play && play.location) return String(play.location);
+      const bookNum = String(Number(play && play.play_id) || 0).padStart(2, '0');
+      const abbr = String((play && (play.abbr || play.play_abbr)) || '').trim() || `BOOK${bookNum}`;
+      return `${bookNum}.${abbr}`;
+    }
+    function getChapterLocation(play, act) {
+      return `${getBookLocation(play)}.${padLocationPart(act)}`;
+    }
+    function getVerseLocation(play, act, scene) {
+      return `${getChapterLocation(play, act)}.${padLocationPart(scene)}`;
+    }
+
+    const compiledRegexes = new Array(activeTerms.length).fill(null);
+    if (hasTerms) {
+      for (let termIdx = 0; termIdx < activeTerms.length; termIdx++) {
+        const termSpec = activeTerms[termIdx];
+        if (!termSpec || termSpec.mode !== 'regex') continue;
+        try { compiledRegexes[termIdx] = new RegExp(termSpec.text.trim(), 'i'); }
+        catch (e) {
+          theadRow.innerHTML = '';
+          tbody.innerHTML = `<tr><td class="warning">Invalid regex: ${e.message}</td></tr>`;
+          return null;
+        }
+      }
+    }
+
+    const rowsMap = new Map();
+    function ensureRow(key, buildFn) {
+      if (!rowsMap.has(key)) rowsMap.set(key, buildFn());
+      return rowsMap.get(key);
+    }
+    function finalizeRows() {
+      const arr = Array.from(rowsMap.values());
+      arr.forEach(r => {
+        activeTerms.forEach((termSpec, idx) => {
+          const tk = termKeys[idx];
+          const cKey = `${tk}_count`;
+          const pKey = `${tk}_pct`;
+          if (r[cKey] == null) r[cKey] = 0;
+          if (r[pKey] == null) r[pKey] = 0;
+          if (getEffectiveTermDisplay(termSpec) === 'pct') delete r[cKey];
+          else delete r[pKey];
+        });
+      });
+      return arr;
+    }
+    function buildTermColumns() {
+      const cols = [];
+      activeTerms.forEach((termSpec, idx) => {
+        const label = formatTermSpecForHeader(termSpec);
+        if (getEffectiveTermDisplay(termSpec) === 'pct') cols.push({ key: `${termKeys[idx]}_pct`, label: `% ${label}`, type: 'number', defaultDir: 'desc', termIdx: idx });
+        else cols.push({ key: `${termKeys[idx]}_count`, label: `# ${label}`, type: 'number', defaultDir: 'desc', termIdx: idx });
+      });
+      return cols;
+    }
+    function getPostingsForTerm(termIdx) {
+      const termSpec = activeTerms[termIdx];
+      if (!termSpec) return [];
+      const termN = normalizeTermN(termSpec.n) || 1;
+      const idx = getIndexForN(termN);
+      if (termSpec.mode === 'regex') {
+        const pattern = compiledRegexes[termIdx];
+        if (!pattern) return [];
+        return aggregatePostings(Object.keys(idx).filter(k => pattern.test(k)).map(k => idx[k]), termN);
+      }
+      const parts = termSpec.text.toLowerCase().split(/\s+/).filter(Boolean);
+      const key = parts.slice(0, termN).join(' ');
+      return idx[key] || [];
+    }
+
+    const genreTotals = new Map();
+    const genrePlayCounts = new Map();
+    if (granVal === 'genre') {
+      plays.forEach(play => {
+        const g = play.genre || 'unknown';
+        genreTotals.set(g, (genreTotals.get(g) || 0) + (play.total_words || 0));
+        genrePlayCounts.set(g, (genrePlayCounts.get(g) || 0) + 1);
+      });
+    }
+    if ((showZeroRows || !hasTerms) && granVal !== 'line') {
+      if (granVal === 'scene') {
+        chunks.forEach(m => {
+          ensureRow(m.scene_id, () => {
+            const totalWords = m.total_words || 0;
+            const ngramCount = getRowNgramCount(totalWords);
+            const playMeta = playsById.get(m.play_id) || { play_id: m.play_id, abbr: m.play_abbr, location: m.location };
+            return { id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id: m.scene_id, act_label: m.act_label, scene_label: m.scene_label };
+          });
+        });
+      } else if (granVal === 'act') {
+        for (const [k, total_words] of actTotals.entries()) {
+          const [pidStr, actNumStr] = k.split(':');
+          const pid = parseInt(pidStr, 10);
+          const actNum = parseInt(actNumStr, 10);
+          const play = playsById.get(pid);
+          if (!play) continue;
+          ensureRow(k, () => {
+            const ngramCount = getRowNgramCount(total_words);
+            return { id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
+          });
+        }
+      } else if (granVal === 'play') {
+        plays.forEach(p => {
+          ensureRow(p.play_id, () => {
+            const total_words = p.total_words ?? 0;
+            const ngramCount = getRowNgramCount(total_words);
+            return { play_id:p.play_id, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+          });
+        });
+      } else if (granVal === 'genre') {
+        for (const [genre, totalWords] of genreTotals.entries()) {
+          ensureRow(genre, () => {
+            const ngramCount = getRowNgramCount(totalWords);
+            return { genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount };
+          });
+        }
+      } else if (granVal === 'character') {
+        characters.forEach(c => {
+          ensureRow(c.character_id, () => {
+            const totalWords = c.total_words_spoken || 0;
+            const ngramCount = getRowNgramCount(totalWords);
+            const numSpeeches = c.num_speeches || 0;
+            const gender = (c.gender ?? c.sex ?? 'A').toString().toUpperCase();
+            return { character_id:c.character_id, play_id:c.play_id, play_title:c.play_title, name:c.name, gender, num_speeches:numSpeeches, total_words_spoken:totalWords, ngram_count:ngramCount };
+          });
+        });
+      }
+    }
+
+    if (granVal === 'line') {
+      if (!Array.isArray(allLines) || allLines.length === 0) {
+        theadRow.innerHTML = '';
+        tbody.innerHTML = '<tr><td class="muted">Line data not available.</td></tr>';
+        return null;
+      }
+      const lineMatchers = [];
+      activeTerms.forEach((termSpec, termIdx) => {
+        if (!termSpec) { lineMatchers.push(null); return; }
+        const termN = normalizeTermN(termSpec.n) || 1;
+        if (termSpec.mode === 'regex') {
+          const re = compiledRegexes[termIdx];
+          if (!re) { lineMatchers.push(null); return; }
+          lineMatchers.push({ type: 'regex', re, n: termN });
+          return;
+        }
+        const parts = termSpec.text.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, termN);
+        if (parts.length === 0) { lineMatchers.push({ type: 'exact', ngram: null }); return; }
+        lineMatchers.push({ type: 'exact', ngram: parts.join(' '), n: termN });
+      });
+
+      for (const ln of allLines) {
+        const clean = (ln.text || '').toString().replace(/\s+/g, ' ').trim();
+        let hasTerm = false;
+        const play = playsById.get(ln.play_id) || { play_id: ln.play_id };
+        const row = {
+          id: ln.canonical_id,
+          location: ln.location || getVerseLocation(play, ln.act, ln.scene),
+          play_id: ln.play_id,
+          play_title: play.title || '',
+          act: ln.act,
+          scene: ln.scene,
+          act_label: ln.act_label,
+          scene_label: ln.scene_label,
+          line_num: ln.line_num,
+          speaker: ln.speaker || '',
+          line: clean
+        };
+        const matchedNgrams = [];
+        lineMatchers.forEach((m, idx) => {
+          if (!m) return;
+          const ngrams = getLineNgrams(ln, normalizeTermN(m.n) || 1);
+          let c = 0;
+          if (m.type === 'regex' && m.re) {
+            const re = new RegExp(m.re.source, m.re.flags.replace('g', ''));
+            for (const ng of ngrams) {
+              if (re.test(ng)) {
+                c++;
+                if (matchedNgrams.length <= 80) matchedNgrams.push(ng);
+              }
+            }
+          } else if (m.type === 'exact' && m.ngram) {
+            for (const ng of ngrams) if (ng === m.ngram) c++;
+            if (c > 0 && matchedNgrams.length <= 80) matchedNgrams.push(m.ngram);
+          }
+          if (c > 0) {
+            hasTerm = true;
+            row[`${termKeys[idx]}_count`] = c;
+          }
+        });
+        if (hasTerm) {
+          row.line_highlight_regex = (matchedNgrams.length === 0 || matchedNgrams.length > 60)
+            ? null
+            : buildHighlightRegexFromNgrams(matchedNgrams);
+          rowsMap.set(row.id, row);
+        }
+      }
+
+      const baseCols = [
+        { key: 'location', label: 'Location', defaultDir: 'asc', type: 'text' },
+        { key: 'play_title', label: 'Canto', defaultDir: 'asc', type: 'text' },
+        { key: 'scene', label: 'Terzina', type: 'number' }
+      ];
+      const termCols = buildTermColumns();
+      baseCols.push(...termCols);
+      baseCols.push({ key: 'line', label: 'Line', type: 'text' });
+      setHeaders(baseCols);
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        const defaultSortKey = termCols[0]?.key || 'location';
+        const defaultSortDir = termCols.length ? 'desc' : 'asc';
+        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
+      }
+      return finalizeRows();
+    }
+
+    if (granVal==='scene'){
+      const baseCols = [
+        {key:'location', label:'Location', defaultDir:'asc', type:'text'},
+        {key:'play_title', label:'Canto', defaultDir:'asc', type:'text'},
+        {key:'scene', label:'Terzina', type:'number'},
+        {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
+      ];
+      activeTerms.forEach((term, termIdx) => {
+        const postings = getPostingsForTerm(termIdx);
+        for (const [scene_id, count] of postings){
+          const m = chunkById.get(scene_id); if (!m) continue;
+          const row = ensureRow(scene_id, () => {
+            const totalWords = m.total_words || 0;
+            const ngramCount = getRowNgramCount(totalWords);
+            const playMeta = playsById.get(m.play_id) || { play_id: m.play_id, abbr: m.play_abbr, location: m.location };
+            return { id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id };
+          });
+          const d = denomFor(normalizeTermN(term.n) || 1,'scene',m);
+          row[`${termKeys[termIdx]}_count`] = count;
+          row[`${termKeys[termIdx]}_pct`] = d ? count/d : 0;
+        }
+      });
+      const termCols = buildTermColumns();
+      setHeaders([...baseCols, ...termCols]);
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        const defaultSortKey = termCols[0]?.key || 'location';
+        const defaultSortDir = termCols.length ? 'desc' : 'asc';
+        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
+      }
+      return finalizeRows();
+    }
+
+    if (granVal==='act'){
+      const baseCols = [
+        {key:'location', label:'Location', defaultDir:'asc', type:'text'},
+        {key:'play_title', label:'Canto', defaultDir:'asc', type:'text'},
+        {key:'act', label:'Section', type:'number'},
+        {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
+      ];
+      activeTerms.forEach((term, termIdx) => {
+        const postings = getPostingsForTerm(termIdx);
+        const countsByAct = new Map();
+        for (const [scene_id,c] of postings){
+          const m = chunkById.get(scene_id); if (!m) continue;
+          const k = `${m.play_id}:${m.act}`;
+          countsByAct.set(k, (countsByAct.get(k)||0) + c);
+        }
+        for (const [k,count] of countsByAct.entries()){
+          const [pidStr, actNumStr] = k.split(':');
+          const pid = parseInt(pidStr, 10);
+          const actNum = parseInt(actNumStr, 10);
+          const play = playsById.get(pid);
+          if (!play) continue;
+          const row = ensureRow(k, () => {
+            const total_words = actTotals.get(k) || 0;
+            const ngramCount = getRowNgramCount(total_words);
+            return { id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
+          });
+          const d = denomFor(normalizeTermN(term.n) || 1,'act',{play_id:pid,act:actNum});
+          row[`${termKeys[termIdx]}_count`] = count;
+          row[`${termKeys[termIdx]}_pct`] = d ? count/d : 0;
+        }
+      });
+      const termCols = buildTermColumns();
+      setHeaders([...baseCols, ...termCols]);
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        const defaultSortKey = termCols[0]?.key || 'location';
+        const defaultSortDir = termCols.length ? 'desc' : 'asc';
+        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
+      }
+      return finalizeRows();
+    }
+
+    if (granVal==='play'){
+      const baseCols = [
+        {key:'location', label:'Location', defaultDir:'asc', type:'text'},
+        {key:'title', label:'Canto', defaultDir:'asc', type:'text'},
+        {key:'genre', label:'Canticle', defaultDir:'asc', type:'text'},
+        {key:'num_chapters', label:'# sections', type:'number'},
+        {key:'num_lines', label:'# lines', type:'number'},
+        {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
+      ];
+      activeTerms.forEach((term, termIdx) => {
+        const postings = getPostingsForTerm(termIdx);
+        const countsByPlay = new Map();
+        for (const [scene_id,c] of postings){
+          const m = chunkById.get(scene_id); if (!m) continue;
+          countsByPlay.set(m.play_id, (countsByPlay.get(m.play_id)||0) + c);
+        }
+        for (const [pid,count] of countsByPlay.entries()){
+          const p = playsById.get(pid);
+          if (!p) continue;
+          const row = ensureRow(pid, () => {
+            const total_words = p.total_words ?? 0;
+            const ngramCount = getRowNgramCount(total_words);
+            return { play_id:pid, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+          });
+          const d = denomFor(normalizeTermN(term.n) || 1,'play',{play_id:pid});
+          row[`${termKeys[termIdx]}_count`] = count;
+          row[`${termKeys[termIdx]}_pct`] = d ? count/d : 0;
+        }
+      });
+      const termCols = buildTermColumns();
+      setHeaders([...baseCols, ...termCols]);
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        const defaultSortKey = termCols[0]?.key || 'location';
+        const defaultSortDir = termCols.length ? 'desc' : 'asc';
+        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
+      }
+      return finalizeRows();
+    }
+
+    if (granVal==='genre'){
+      const baseCols = [
+        {key:'genre', label:'Canticle', defaultDir:'asc', type:'text'},
+        {key:'num_plays', label:'# cantos', type:'number'},
+        {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
+      ];
+      activeTerms.forEach((term, termIdx) => {
+        const postings = getPostingsForTerm(termIdx);
+        const countsByGenre = new Map();
+        for (const [scene_id,c] of postings){
+          const m = chunkById.get(scene_id); if (!m) continue;
+          const genre = m.genre || 'unknown';
+          countsByGenre.set(genre, (countsByGenre.get(genre)||0) + c);
+        }
+        for (const [genre,count] of countsByGenre.entries()){
+          const totalWords = genreTotals.get(genre) || 0;
+          const row = ensureRow(genre, () => {
+            const ngramCount = getRowNgramCount(totalWords);
+            return { genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount };
+          });
+          const denom = denomFor(normalizeTermN(term.n) || 1, 'genre', { total_words: totalWords });
+          row[`${termKeys[termIdx]}_count`] = count;
+          row[`${termKeys[termIdx]}_pct`] = denom ? count/denom : 0;
+        }
+      });
+      const termCols = buildTermColumns();
+      setHeaders([...baseCols, ...termCols]);
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      }
+      return finalizeRows();
+    }
+
+    if (granVal==='character'){
+      const baseCols = [
+        {key:'name', label:'Character', defaultDir:'asc', type:'text'},
+        {key:'gender', label:'Gender', defaultDir:'asc', type:'text'},
+        {key:'play_title', label:'Play', defaultDir:'asc', type:'text'},
+        {key:'num_speeches', label:'# speeches', type:'number'},
+        {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
+      ];
+      activeTerms.forEach((term, termIdx) => {
+        const postings = getPostingsForTerm(termIdx);
+        for (const [char_id, count] of postings){
+          const c = charactersById.get(char_id);
+          if (!c) continue;
+          const row = ensureRow(char_id, () => {
+            const totalWords = c.total_words_spoken || 0;
+            const ngramCount = getRowNgramCount(totalWords);
+            const numSpeeches = c.num_speeches || 0;
+            const gender = (c.gender ?? c.sex ?? 'A').toString().toUpperCase();
+            return { character_id:c.character_id, play_id:c.play_id, play_title:c.play_title, name:c.name, gender, num_speeches:numSpeeches, total_words_spoken:totalWords, ngram_count:ngramCount };
+          });
+          const denom = denomFor(normalizeTermN(term.n) || 1,'character',c);
+          row[`${termKeys[termIdx]}_count`] = count;
+          row[`${termKeys[termIdx]}_pct`] = denom ? count/denom : 0;
+        }
+      });
+      const termCols = buildTermColumns();
+      setHeaders([...baseCols, ...termCols]);
+      if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
+        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+      }
+      return finalizeRows();
+    }
+  }
+
+  function applySegmentsFilters(rows) {
+    let out = rows;
+    const segFilters = getSegmentsFiltersMap();
+    for (const [key, f] of segFilters.entries()) {
+      if (!f) continue;
+      const type = f.type || 'text';
+      if (type === 'number') {
+        const hasMin = f.min != null && f.min !== '';
+        const hasMax = f.max != null && f.max !== '';
+        if (!hasMin && !hasMax) continue;
+        const isPct = key === 'pct' || key.endsWith('_pct');
+        const minVal = hasMin ? parseFloat(f.min) : -Infinity;
+        const maxVal = hasMax ? parseFloat(f.max) : Infinity;
+        const m = isPct && minVal > 1 ? minVal/100 : minVal;
+        const M = isPct && maxVal > 1 ? maxVal/100 : maxVal;
+        out = out.filter(r => {
+          const v = r[key];
+          if (!Number.isFinite(v)) return false;
+          return v >= m && v <= M;
+        });
+      } else {
+        if (!f.pattern) continue;
+        let re = null;
+        try { re = new RegExp(f.pattern, 'i'); } catch(e) { re = null; }
+        if (!re) continue;
+        out = out.filter(r => re.test(String(r[key] ?? '')));
+      }
+    }
+    return out;
+  }
+  function renderRows(rows){
+    tbody.innerHTML='';
+    const colSpan = Math.max(1, theadRow.children.length || 8);
+    if (!rows || rows.length===0){ 
+      tbody.innerHTML = `<tr><td colspan="${colSpan}" class="muted">No results.</td></tr>`; 
+      setElementHidden(document.getElementById('segmentsPagination'), true);
+      updateSegmentsFilterActions();
+      return; 
+    }
+    // Keep base rows for later re-filtering
+    lastSegmentsBaseRows = rows.slice();
+    // Apply per-column filters
+    rows = applySegmentsFilters(rows);
+    if (rows.length === 0) { 
+      tbody.innerHTML = `<tr><td colspan="${colSpan}" class="muted">No results match the filters.</td></tr>`; 
+      setElementHidden(document.getElementById('segmentsPagination'), true);
+      updateSegmentsFilterActions();
+      return; 
+    }
+    
+    rows = sortRows(rows);
+    updateSortIndicators();
+    
+    // Store all rows and reset to page 1
+    segmentsAllRows = rows;
+    segmentsCurrentPage = 1;
+    
+    renderSegmentsPage();
+  }
+  function refreshSegmentsFromFilters() {
+    if (!lastSegmentsBaseRows || lastSegmentsBaseRows.length === 0) return;
+    let rows = applySegmentsFilters(lastSegmentsBaseRows);
+    if (rows.length === 0) {
+      const colSpan = Math.max(1, theadRow.children.length || 8);
+      tbody.innerHTML = `<tr><td colspan="${colSpan}" class="muted">No results match the filters.</td></tr>`;
+      setElementHidden(document.getElementById('segmentsPagination'), true);
+      updateSegmentsFilterActions();
+      return;
+    }
+    rows = sortRows(rows);
+    segmentsAllRows = rows;
+    segmentsCurrentPage = 1;
+    renderSegmentsPage();
+  }
+
+  // Column filter popover — loaded from js/filter-popover.js
+  if (typeof window.initFilterPopoverModule === 'function') {
+    window.initFilterPopoverModule({
+      getStateMap: (table) => (table === 'lines'
+        ? (linesTabController ? linesTabController.getColumnFilters() : new Map())
+        : getSegmentsFiltersMap()),
+      applyTableFilters: (table) => {
+        if (table === 'lines') {
+          if (linesTabController) {
+            linesTabController.renderPage();
+            linesTabController.updateFilterActions();
+          }
+          updateDeepLink();
+        } else {
+          refreshSegmentsFromFilters();
+          updateSegmentsFilterActions();
+          updateDeepLink();
+        }
+      }
+    });
+  }
+  
+  function renderSegmentsPage() {
+    const totalPages = getTotalPages(segmentsAllRows.length, segmentsPageSize);
+    const paginatedRows = paginateArray(segmentsAllRows, segmentsCurrentPage, segmentsPageSize);
+
+    tbody.innerHTML = '';
+    const colDefs = Array.from(theadRow.children).map((th) => ({
+      key: th.dataset.key,
+      type: th.dataset.type || 'text',
+      label: getHeaderLabelText(th)
+    }));
+    const cols = colDefs.map((c) => c.key);
+    const numericRankIndex = buildNumericRankIndex(segmentsAllRows, colDefs);
+    const granVal = gran.value;
+
+    for (const r of paginatedRows) {
+      const tr = document.createElement('tr');
+      cols.forEach((k) => {
+        const td = document.createElement('td');
+        if (k === 'act' && r.act_label) {
+          td.textContent = r.act_label;
+        } else if (k === 'scene' && r.scene_label) {
+          td.textContent = r.scene_label;
+        } else if (k === 'pct' || k.endsWith('_pct')) {
+          td.textContent = fmtPct(r[k] || 0);
+        } else if (k === 'line' && r.line != null) {
+          td.innerHTML = (colorScaleState.highlightEnabled && r.line_highlight_regex)
+            ? highlightHTML(r.line, r.line_highlight_regex)
+            : escapeHTML(r.line);
+        } else if (typeof isCharacterDetailCell === 'function' && isCharacterDetailCell(granVal, k, r)) {
+          const v = r[k];
+          if (v !== undefined && v !== null && r.character_id != null) {
+            td.appendChild(buildCharacterDetailLink(v, r.character_id));
+          } else {
+            td.textContent = (v === undefined || v === null) ? '' : v;
+          }
+        } else if (typeof isPlayDetailCell === 'function' && isPlayDetailCell(granVal, k, r)) {
+          const v = r[k];
+          if (v !== undefined && v !== null && r.play_id != null) {
+            td.appendChild(buildPlayDetailLink(v, r.play_id));
+          } else {
+            td.textContent = (v === undefined || v === null) ? '' : v;
+          }
+        } else {
+          const v = r[k];
+          td.textContent = (v === undefined || v === null) ? '' : v;
+        }
+        const rankHint = getNumericRankHint(numericRankIndex, k, r[k]);
+        if (rankHint) {
+          td.classList.add('ranked-cell');
+          td.title = rankHint;
+          td.dataset.rankHint = rankHint;
+          td.setAttribute('aria-label', rankHint);
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+
+    updateSortIndicators();
+
+    const paginationDiv = document.getElementById('segmentsPagination');
+    setElementHidden(paginationDiv, segmentsAllRows.length <= 25);
+
+    document.getElementById('segmentsPageInfo').textContent = `Page ${segmentsCurrentPage} of ${totalPages}`;
+    document.getElementById('segmentsTotalInfo').textContent = `(${segmentsAllRows.length} total rows)`;
+
+    document.getElementById('segmentsFirstPage').disabled = segmentsCurrentPage === 1;
+    document.getElementById('segmentsPrevPage').disabled = segmentsCurrentPage === 1;
+    document.getElementById('segmentsNextPage').disabled = segmentsCurrentPage === totalPages;
+    document.getElementById('segmentsLastPage').disabled = segmentsCurrentPage === totalPages;
+    applyOrClear('#results');
+    updateDeepLink();
+    updateSegmentsFilterActions();
+  }
+
+  // removed copy/jump actions
+  if (resultsTable) {
+    resultsTable.addEventListener('click', (e) => {
+      if (!isNoHoverDevice()) return;
+      const td = e.target && typeof e.target.closest === 'function'
+        ? e.target.closest('td[data-rank-hint]')
+        : null;
+      if (!td || !resultsTable.contains(td)) return;
+      showRankHintBubbleForCell(td, td.dataset.rankHint || '');
+    });
+  }
+  window.addEventListener('scroll', hideRankHintBubble, true);
+  window.addEventListener('resize', hideRankHintBubble);
+
+  // Clear all filters for current granularity
+  const clearSegFiltersBtn = document.getElementById('clearSegmentsFilters');
+  if (clearSegFiltersBtn) {
+    clearSegFiltersBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const m = getSegmentsFiltersMap();
+      if (m.size === 0) return;
+      m.clear();
+      refreshSegmentsFromFilters();
+      updateSegmentsFilterActions();
+      updateDeepLink();
+    });
+  }
+
+  // Update deep link initially
+  updateDeepLink();
+  
+  function doSearch(preferredSortTermIndex = null){
+    pruneExtraTermsAgainstPrimary();
+    renderExtraTerms();
+    const terms = getActiveTerms();
+    const rows = buildRowsForTerms(terms, preferredSortTermIndex);
+    if (rows !== null) {
+      renderRows(rows);
+    }
+  }
+
+  q.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      clearAddColumnPrompt(true);
+      const added = addExtraTerm(q.value);
+      if (added) q.value = '';
+    }
+  });
+  // per-column filters are handled via header filter icons; removed global min filters
+
+  // Removed play selection buttons (use column filters)
+  
+  // Segments pagination controls
+  document.getElementById('segmentsFirstPage').addEventListener('click', () => {
+    segmentsCurrentPage = 1;
+    renderSegmentsPage();
+  });
+  document.getElementById('segmentsPrevPage').addEventListener('click', () => {
+    if (segmentsCurrentPage > 1) {
+      segmentsCurrentPage--;
+      renderSegmentsPage();
+    }
+  });
+  document.getElementById('segmentsNextPage').addEventListener('click', () => {
+    const totalPages = getTotalPages(segmentsAllRows.length, segmentsPageSize);
+    if (segmentsCurrentPage < totalPages) {
+      segmentsCurrentPage++;
+      renderSegmentsPage();
+    }
+  });
+  document.getElementById('segmentsLastPage').addEventListener('click', () => {
+    segmentsCurrentPage = getTotalPages(segmentsAllRows.length, segmentsPageSize);
+    renderSegmentsPage();
+  });
+  document.getElementById('segmentsPageSize').addEventListener('change', (e) => {
+    segmentsPageSize = parseInt(e.target.value);
+    segmentsCurrentPage = 1;
+    renderSegmentsPage();
+  });
+  
+  // Segments tab controls - track changes
+  q.addEventListener('input', () => {
+    const val = q.value;
+    const hasRegexChars = /[.*+?^${}()|[\]\\]/.test(val);
+    if (hasRegexChars && matchMode.value === 'exact') {
+      matchMode.value = 'regex';
+      updateSegmentsMatchModeUI();
+    }
+    clearTermWarning();
+    if (val.trim()) scheduleAddColumnPrompt();
+    else clearAddColumnPrompt(true);
+  });
+  if (addColumnBtn) {
+    addColumnBtn.addEventListener('click', () => {
+      clearAddColumnPrompt(true);
+      const added = addExtraTerm(q.value);
+      if (added) {
+        q.value = '';
+        q.focus();
+      }
+    });
+  }
+  ngramMode.addEventListener('change', doSearch);
+  gran.addEventListener('change', doSearch);
+  matchMode.addEventListener('change', () => {
+    clearTermWarning();
+    updateSegmentsMatchModeUI();
+    doSearch();
+  });
+
+  // Color scale toggles
+  document.querySelectorAll('.color-scale-toggle').forEach(cb => {
+    cb.addEventListener('change', (e) => setColorScaleEnabled(e.target.checked));
+  });
+  if (showZeroRowsToggle) {
+    showZeroRowsToggle.addEventListener('change', (e) => {
+      showZeroRows = e.target.checked;
+      doSearch();
+    });
+  }
+  // Palette and steps options
+  document.querySelectorAll('.color-scale-palette').forEach(sel => {
+    sel.addEventListener('change', e => { colorScaleState.colorScalePalette = e.target.value; syncColorScaleOptions(); applyColorScalesForVisibleTables(); updateDeepLink(); });
+  });
+  document.querySelectorAll('.color-scale-steps').forEach(sel => {
+    sel.addEventListener('change', e => { colorScaleState.colorScaleSteps = parseInt(e.target.value)||5; syncColorScaleOptions(); applyColorScalesForVisibleTables(); updateDeepLink(); });
+  });
+  // Ensure initial sync
+  syncColorScaleToggles();
+  syncColorScaleOptions();
+  renderAllLegends();
+  if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+  updateSegmentsMatchModeUI();
+  // Highlight toggle handlers
+  document.querySelectorAll('.highlight-toggle').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      setHighlightEnabled(e.target.checked);
+      if (linesTabController && typeof linesTabController.renderPage === 'function') {
+        linesTabController.renderPage();
+      }
+      updateDeepLink();
+    });
+  });
+  syncHighlightToggles();
+
+  const downloadSegBtn = document.getElementById('downloadSegmentsCsv');
+  if (downloadSegBtn) {
+    downloadSegBtn.addEventListener('click', () => {
+      const name = `segments-${gran.value}-${Date.now()}.csv`;
+      downloadSegmentsCsvAll(name);
+    });
+  }
+
+  // Lines tab controller wrapper (module in docs/js/lines-tab.js)
+  function doLinesSearch() {
+    if (!linesTabController) return;
+    linesTabController.doSearch();
+  }
+
+  // initial state for contexts tab (only if no deep link state applied)
+  if (!appliedDeepLinkState) {
+    gran.value = 'play';
+    doSearch();
+  }
+
+  // Local testing override: force a tab open without affecting normal defaults/deep links
+  (function applyShowTabOverride() {
+    const sp = new URLSearchParams(location.search);
+    const forcedTab = (sp.get('showtab') || '').trim();
+    if (!forcedTab) return;
+    if (forcedTab !== 'segments' && forcedTab !== 'lines') return;
+    const btn = document.querySelector(`.tab-btn[data-tab="${forcedTab}"]`);
+    if (btn) btn.click();
+  })();
+  
+  // Color Scale Module — loaded from js/color-scale.js
+  // Initialize with dependencies
+  if (typeof window.initColorScaleModule === 'function') {
+    window.initColorScaleModule({ 
+      getSegmentsQueryValue: () => (q ? q.value : ''),
+      hasActiveSegmentsSearch: () => {
+        if (q && q.value && q.value.trim()) return true;
+        return getActiveTerms().length > 0;
+      },
+      getLinesQueryValue: () => document.getElementById('linesQuery').value,
+      hasActiveLinesSearch: () => {
+        const linesQuery = document.getElementById('linesQuery');
+        return !!(linesQuery && linesQuery.value && linesQuery.value.trim());
+      },
+      doSearch: doSearch,
+      doLinesSearch: doLinesSearch 
+    });
+  }
+  
+  // Play Detail Modal — loaded from js/play-detail.js
+  // Initialize with data dependencies
+  if (typeof window.initPlayDetail === 'function') {
+    window.initPlayDetail({ chunks, tokens, tokens2, tokens3, playsById, chunkById, characters, characterNameFilterConfig, escapeHTML });
+  }
+
+  // Character Detail Modal — loaded from js/character-detail.js
+  // Initialize with data dependencies
+  if (typeof window.initCharacterDetail === 'function') {
+    window.initCharacterDetail({ characters, playsById, tokensChar, tokensChar2, tokensChar3, allLines, characterNameFilterConfig, escapeHTML });
+  }
+
+  window.__contabulateReady = true;
+})();
+</script>
+  <footer class="site-footer">
+    Built by <a href="https://everydaysystems.com" target="_blank" rel="noopener">Reinhard Engels</a>
+    <span aria-hidden="true"> · </span>
+    <a href="https://github.com/brainheart/shakespeare-contabulate" target="_blank" rel="noopener">Source</a>
+  </footer>
+</body>
+</html>
