@@ -201,6 +201,26 @@
       : (playDetailState.maxByN[n] || 0);
   }
 
+  function getPlayFilterDisplayData(playId) {
+    const filter = characterNameFiltersByPlay && characterNameFiltersByPlay.get(playId);
+    if (!filter) {
+      return { tokens: [], phrases: [], total: 0 };
+    }
+
+    const tokensSorted = Array.from(filter.tokens || []).sort((a, b) => a.localeCompare(b));
+    const phraseSet = new Set();
+    for (const n of [2, 3]) {
+      const phrases = filter.phrasesByN && filter.phrasesByN[n];
+      for (const phrase of phrases || []) phraseSet.add(phrase);
+    }
+    const phrasesSorted = Array.from(phraseSet).sort((a, b) => a.localeCompare(b));
+    return {
+      tokens: tokensSorted,
+      phrases: phrasesSorted,
+      total: tokensSorted.length + phrasesSorted.length
+    };
+  }
+
   function ensurePlayDetailModal() {
     if (playDetailEls) return playDetailEls;
 
@@ -227,6 +247,7 @@
               <input id="playDetailFilterNames" type="checkbox" checked>
               Exclude configured names
             </label>
+            <div id="playDetailFilterDisclosure" class="play-detail-filter-disclosure is-hidden"></div>
           </div>
           <div class="play-detail-loading" id="playDetailLoading">Computing...</div>
           <table id="playDetailTable" class="is-hidden">
@@ -254,6 +275,7 @@
     const titleEl = overlay.querySelector('#playDetailTitle');
     const metaEl = overlay.querySelector('#playDetailMeta');
     const filterNamesToggle = overlay.querySelector('#playDetailFilterNames');
+    const filterDisclosureEl = overlay.querySelector('#playDetailFilterDisclosure');
     const tabBtns = Array.from(overlay.querySelectorAll('.play-detail-tab-btn'));
     const sortableHeaders = Array.from(overlay.querySelectorAll('th[data-key]'));
 
@@ -296,6 +318,43 @@
         if (!key || key !== playDetailState.sortKey) return;
         th.classList.add(playDetailState.sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
       });
+    }
+
+    function renderFilterDisclosure() {
+      if (!filterDisclosureEl) return;
+
+      const playId = playDetailState.playId;
+      const play = playsById && playsById.get(playId);
+      const playLabel = (play && (play.title || play.abbr)) || 'this play';
+      const display = getPlayFilterDisplayData(playId);
+
+      if (!playDetailState.excludeCharacterNames) {
+        filterDisclosureEl.innerHTML = '';
+        setElementHidden(filterDisclosureEl, true);
+        return;
+      }
+
+      const tokenList = display.tokens.length
+        ? escapeHTML(display.tokens.join(', '))
+        : '<span class="muted">None</span>';
+      const phraseList = display.phrases.length
+        ? display.phrases.map(phrase => `&quot;${escapeHTML(phrase)}&quot;`).join(', ')
+        : '<span class="muted">None</span>';
+
+      filterDisclosureEl.innerHTML = `
+        <details class="excluded-terms-details">
+          <summary>Filtering ${display.total} terms for ${escapeHTML(playLabel)}</summary>
+          <div class="excluded-terms-group">
+            <span class="excluded-terms-label">Single tokens</span>
+            <span class="excluded-terms-list">${tokenList}</span>
+          </div>
+          <div class="excluded-terms-group">
+            <span class="excluded-terms-label">Phrases</span>
+            <span class="excluded-terms-list">${phraseList}</span>
+          </div>
+        </details>
+      `;
+      setElementHidden(filterDisclosureEl, false);
     }
 
     function renderRows() {
@@ -358,6 +417,7 @@
       filterNamesToggle.addEventListener('change', () => {
         playDetailState.excludeCharacterNames = !!filterNamesToggle.checked;
         updateSliderUi();
+        renderFilterDisclosure();
         renderRows();
       });
     }
@@ -390,7 +450,7 @@
     });
 
     playDetailEls = {
-      overlay, loading, table, titleEl, metaEl, filterNamesToggle, setLoading, setTab, updateSliderUi, renderRows
+      overlay, loading, table, titleEl, metaEl, filterNamesToggle, setLoading, setTab, updateSliderUi, renderRows, renderFilterDisclosure
     };
     return playDetailEls;
   }
@@ -501,6 +561,7 @@
     modal.overlay.classList.add('open');
     modal.setLoading('Computing...');
     modal.updateSliderUi();
+    modal.renderFilterDisclosure();
 
     const data = await computePlayDetailData(playId);
     if (playDetailState.playId !== playId) return;

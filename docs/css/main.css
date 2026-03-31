@@ -616,6 +616,39 @@ th { position: sticky; }
   accent-color: var(--burgundy);
   cursor: pointer;
 }
+.play-detail-filter-disclosure {
+  flex: 1 0 100%;
+  margin: -0.15rem 0 0.1rem;
+}
+.excluded-terms-details {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #6d5b4f;
+  font-size: 0.86rem;
+}
+.excluded-terms-details summary {
+  padding: 0;
+  color: inherit;
+}
+.excluded-terms-details summary:hover {
+  color: #4f3a2e;
+}
+.excluded-terms-group {
+  margin-top: 0.35rem;
+}
+.excluded-terms-label {
+  display: inline-block;
+  margin-right: 0.4rem;
+  font-weight: 600;
+  color: #5b4738;
+}
+.excluded-terms-list {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
 .play-detail-value {
   color: #5b4738;
   font-size: 0.92rem;
