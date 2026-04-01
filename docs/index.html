@@ -1193,7 +1193,7 @@
         if (!pattern) return [];
         return aggregatePostings(Object.keys(idx).filter(k => pattern.test(k)).map(k => idx[k]), termN);
       }
-      const parts = termSpec.text.toLowerCase().split(/\s+/).filter(Boolean);
+      const parts = normalizeTerm(termSpec.text).split(/\s+/).filter(Boolean);
       const key = parts.slice(0, termN).join(' ');
       return idx[key] || [];
     }
