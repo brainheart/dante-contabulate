@@ -1145,7 +1145,7 @@
       for (let termIdx = 0; termIdx < activeTerms.length; termIdx++) {
         const termSpec = activeTerms[termIdx];
         if (!termSpec || termSpec.mode !== 'regex') continue;
-        try { compiledRegexes[termIdx] = new RegExp(termSpec.text.trim(), 'i'); }
+        try { compiledRegexes[termIdx] = new RegExp(normalizeTerm(termSpec.text), 'i'); }
         catch (e) {
           theadRow.innerHTML = '';
           tbody.innerHTML = `<tr><td class="warning">Invalid regex: ${e.message}</td></tr>`;
