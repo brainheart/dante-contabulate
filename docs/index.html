@@ -1273,7 +1273,7 @@
           lineMatchers.push({ type: 'regex', re, n: termN });
           return;
         }
-        const parts = termSpec.text.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, termN);
+        const parts = normalizeTerm(termSpec.text).split(/\s+/).filter(Boolean).slice(0, termN);
         if (parts.length === 0) { lineMatchers.push({ type: 'exact', ngram: null }); return; }
         lineMatchers.push({ type: 'exact', ngram: parts.join(' '), n: termN });
       });
