@@ -1,0 +1,282 @@
+commit 608d3e3ada62d8ae9d4e3033a42b6d91ab88c26b
+Author: Reinhard Engels <reinhard.engels@gmail.com>
+Date:   Tue Mar 31 14:51:57 2026 -0400
+
+    Show excluded terms disclosure in play/character detail modals
+
+diff --git a/docs/css/main.css b/docs/css/main.css
+index 5306500..90eb8e5 100644
+--- a/docs/css/main.css
++++ b/docs/css/main.css
+@@ -623,6 +623,39 @@ th { position: sticky; }
+   accent-color: var(--burgundy);
+   cursor: pointer;
+ }
++.play-detail-filter-disclosure {
++  flex: 1 0 100%;
++  margin: -0.15rem 0 0.1rem;
++}
++.excluded-terms-details {
++  margin: 0;
++  padding: 0;
++  background: transparent;
++  border: 0;
++  box-shadow: none;
++  color: #6d5b4f;
++  font-size: 0.86rem;
++}
++.excluded-terms-details summary {
++  padding: 0;
++  color: inherit;
++}
++.excluded-terms-details summary:hover {
++  color: #4f3a2e;
++}
++.excluded-terms-group {
++  margin-top: 0.35rem;
++}
++.excluded-terms-label {
++  display: inline-block;
++  margin-right: 0.4rem;
++  font-weight: 600;
++  color: #5b4738;
++}
++.excluded-terms-list {
++  color: inherit;
++  overflow-wrap: anywhere;
++}
+ .play-detail-value {
+   color: #5b4738;
+   font-size: 0.92rem;
+diff --git a/docs/js/character-detail.js b/docs/js/character-detail.js
+index 741bd04..ab38e40 100644
+--- a/docs/js/character-detail.js
++++ b/docs/js/character-detail.js
+@@ -240,6 +240,26 @@
+       : (data.maxByN[n] || 0);
+   }
+ 
++  function getPlayFilterDisplayData(playId) {
++    const filter = characterNameFiltersByPlay && characterNameFiltersByPlay.get(playId);
++    if (!filter) {
++      return { tokens: [], phrases: [], total: 0 };
++    }
++
++    const tokensSorted = Array.from(filter.tokens || []).sort((a, b) => a.localeCompare(b));
++    const phraseSet = new Set();
++    for (const n of [2, 3]) {
++      const phrases = filter.phrasesByN && filter.phrasesByN[n];
++      for (const phrase of phrases || []) phraseSet.add(phrase);
++    }
++    const phrasesSorted = Array.from(phraseSet).sort((a, b) => a.localeCompare(b));
++    return {
++      tokens: tokensSorted,
++      phrases: phrasesSorted,
++      total: tokensSorted.length + phrasesSorted.length
++    };
++  }
++
+   function getCachedCharacterDetailData(key) {
+     if (!characterDetailCache.has(key)) return null;
+     const value = characterDetailCache.get(key);
+@@ -283,6 +303,7 @@
+               <input id="characterDetailFilterNames" type="checkbox" checked>
+               Exclude character names
+             </label>
++            <div id="characterDetailFilterDisclosure" class="play-detail-filter-disclosure is-hidden"></div>
+             <label for="characterDetailScope">TF-IDF scope</label>
+             <select id="characterDetailScope">
+               <option value="global" selected>Global (all characters)</option>
+@@ -315,6 +336,7 @@
+     const titleEl = overlay.querySelector('#characterDetailTitle');
+     const metaEl = overlay.querySelector('#characterDetailMeta');
+     const filterNamesToggle = overlay.querySelector('#characterDetailFilterNames');
++    const filterDisclosureEl = overlay.querySelector('#characterDetailFilterDisclosure');
+     const scopeSel = overlay.querySelector('#characterDetailScope');
+     const tabBtns = Array.from(overlay.querySelectorAll('.play-detail-tab-btn'));
+     const sortableHeaders = Array.from(overlay.querySelectorAll('th[data-key]'));
+@@ -360,6 +382,44 @@
+       });
+     }
+ 
++    function renderFilterDisclosure() {
++      if (!filterDisclosureEl) return;
++
++      const character = charactersById && charactersById.get(characterDetailState.characterId);
++      const playId = character ? Number(character.play_id) : null;
++      const play = Number.isInteger(playId) && playsById ? playsById.get(playId) : null;
++      const playLabel = (play && (play.title || play.abbr)) || 'this play';
++      const display = getPlayFilterDisplayData(playId);
++
++      if (!characterDetailState.excludeCharacterNames) {
++        filterDisclosureEl.innerHTML = '';
++        setElementHidden(filterDisclosureEl, true);
++        return;
++      }
++
++      const tokenList = display.tokens.length
++        ? escapeHTML(display.tokens.join(', '))
++        : '<span class="muted">None</span>';
++      const phraseList = display.phrases.length
++        ? display.phrases.map(phrase => `&quot;${escapeHTML(phrase)}&quot;`).join(', ')
++        : '<span class="muted">None</span>';
++
++      filterDisclosureEl.innerHTML = `
++        <details class="excluded-terms-details">
++          <summary>Filtering ${display.total} terms for ${escapeHTML(playLabel)}</summary>
++          <div class="excluded-terms-group">
++            <span class="excluded-terms-label">Single tokens</span>
++            <span class="excluded-terms-list">${tokenList}</span>
++          </div>
++          <div class="excluded-terms-group">
++            <span class="excluded-terms-label">Phrases</span>
++            <span class="excluded-terms-list">${phraseList}</span>
++          </div>
++        </details>
++      `;
++      setElementHidden(filterDisclosureEl, false);
++    }
++
+     function renderRows() {
+       const rows = rowsForCurrentSelection();
+       const threshold = characterDetailState.threshold || 0;
+@@ -439,6 +499,7 @@
+       filterNamesToggle.addEventListener('change', () => {
+         characterDetailState.excludeCharacterNames = !!filterNamesToggle.checked;
+         updateSliderUi();
++        renderFilterDisclosure();
+         renderRows();
+       });
+     }
+@@ -500,6 +561,7 @@
+       setTab,
+       updateSliderUi,
+       renderRows,
++      renderFilterDisclosure,
+       ensureScopeDataLoaded
+     };
+     return characterDetailEls;
+@@ -632,6 +694,7 @@
+     modal.overlay.classList.add('open');
+     modal.setLoading('Computing global TF-IDF...');
+     modal.updateSliderUi();
++    modal.renderFilterDisclosure();
+ 
+     await modal.ensureScopeDataLoaded('global');
+     if (characterDetailState.characterId !== characterId) return;
+diff --git a/docs/js/play-detail.js b/docs/js/play-detail.js
+index 0e45d33..bf8608b 100644
+--- a/docs/js/play-detail.js
++++ b/docs/js/play-detail.js
+@@ -198,6 +198,26 @@
+       : (playDetailState.maxByN[n] || 0);
+   }
+ 
++  function getPlayFilterDisplayData(playId) {
++    const filter = characterNameFiltersByPlay && characterNameFiltersByPlay.get(playId);
++    if (!filter) {
++      return { tokens: [], phrases: [], total: 0 };
++    }
++
++    const tokensSorted = Array.from(filter.tokens || []).sort((a, b) => a.localeCompare(b));
++    const phraseSet = new Set();
++    for (const n of [2, 3]) {
++      const phrases = filter.phrasesByN && filter.phrasesByN[n];
++      for (const phrase of phrases || []) phraseSet.add(phrase);
++    }
++    const phrasesSorted = Array.from(phraseSet).sort((a, b) => a.localeCompare(b));
++    return {
++      tokens: tokensSorted,
++      phrases: phrasesSorted,
++      total: tokensSorted.length + phrasesSorted.length
++    };
++  }
++
+   function ensurePlayDetailModal() {
+     if (playDetailEls) return playDetailEls;
+ 
+@@ -224,6 +244,7 @@
+               <input id="playDetailFilterNames" type="checkbox" checked>
+               Exclude character names
+             </label>
++            <div id="playDetailFilterDisclosure" class="play-detail-filter-disclosure is-hidden"></div>
+           </div>
+           <div class="play-detail-loading" id="playDetailLoading">Computing...</div>
+           <table id="playDetailTable" class="is-hidden">
+@@ -251,6 +272,7 @@
+     const titleEl = overlay.querySelector('#playDetailTitle');
+     const metaEl = overlay.querySelector('#playDetailMeta');
+     const filterNamesToggle = overlay.querySelector('#playDetailFilterNames');
++    const filterDisclosureEl = overlay.querySelector('#playDetailFilterDisclosure');
+     const tabBtns = Array.from(overlay.querySelectorAll('.play-detail-tab-btn'));
+     const sortableHeaders = Array.from(overlay.querySelectorAll('th[data-key]'));
+ 
+@@ -295,6 +317,43 @@
+       });
+     }
+ 
++    function renderFilterDisclosure() {
++      if (!filterDisclosureEl) return;
++
++      const playId = playDetailState.playId;
++      const play = playsById && playsById.get(playId);
++      const playLabel = (play && (play.title || play.abbr)) || 'this play';
++      const display = getPlayFilterDisplayData(playId);
++
++      if (!playDetailState.excludeCharacterNames) {
++        filterDisclosureEl.innerHTML = '';
++        setElementHidden(filterDisclosureEl, true);
++        return;
++      }
++
++      const tokenList = display.tokens.length
++        ? escapeHTML(display.tokens.join(', '))
++        : '<span class="muted">None</span>';
++      const phraseList = display.phrases.length
++        ? display.phrases.map(phrase => `&quot;${escapeHTML(phrase)}&quot;`).join(', ')
++        : '<span class="muted">None</span>';
++
++      filterDisclosureEl.innerHTML = `
++        <details class="excluded-terms-details">
++          <summary>Filtering ${display.total} terms for ${escapeHTML(playLabel)}</summary>
++          <div class="excluded-terms-group">
++            <span class="excluded-terms-label">Single tokens</span>
++            <span class="excluded-terms-list">${tokenList}</span>
++          </div>
++          <div class="excluded-terms-group">
++            <span class="excluded-terms-label">Phrases</span>
++            <span class="excluded-terms-list">${phraseList}</span>
++          </div>
++        </details>
++      `;
++      setElementHidden(filterDisclosureEl, false);
++    }
++
+     function renderRows() {
+       const rows = rowsForCurrentSelection();
+       const threshold = playDetailState.threshold || 0;
+@@ -355,6 +414,7 @@
+       filterNamesToggle.addEventListener('change', () => {
+         playDetailState.excludeCharacterNames = !!filterNamesToggle.checked;
+         updateSliderUi();
++        renderFilterDisclosure();
+         renderRows();
+       });
+     }
+@@ -387,7 +447,7 @@
+     });
+ 
+     playDetailEls = {
+-      overlay, loading, table, titleEl, metaEl, filterNamesToggle, setLoading, setTab, updateSliderUi, renderRows
++      overlay, loading, table, titleEl, metaEl, filterNamesToggle, setLoading, setTab, updateSliderUi, renderRows, renderFilterDisclosure
+     };
+     return playDetailEls;
+   }
+@@ -500,6 +560,7 @@
+     modal.overlay.classList.add('open');
+     modal.setLoading('Computing...');
+     modal.updateSliderUi();
++    modal.renderFilterDisclosure();
+ 
+     const data = await computePlayDetailData(playId);
+     if (playDetailState.playId !== playId) return;
