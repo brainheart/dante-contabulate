@@ -98,12 +98,12 @@
       let searchPattern = null;
       if (isRegex) {
         try {
-          searchPattern = new RegExp(query, 'i');
+          searchPattern = new RegExp(window.normalizeTerm(query), 'i');
         } catch (e) {
           return null;
         }
       }
-      const queryTokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, n);
+      const queryTokens = window.normalizeTerm(query).split(/\s+/).filter(Boolean).slice(0, n);
       const queryNgram = queryTokens.join(' ');
 
       for (const line of allLines) {
