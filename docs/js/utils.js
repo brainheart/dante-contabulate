@@ -110,7 +110,7 @@ function countRegexMatches(text, re) {
 }
 
 function tokenizeLineText(text) {
-  const m = String(text || '').normalize('NFC').toLowerCase().match(/[a-z]+/g);
+  const m = String(text || '').normalize('NFC').toLowerCase().match(/[\p{L}]+/gu);
   return m ? m : [];
 }
 
