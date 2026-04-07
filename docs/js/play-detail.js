@@ -30,6 +30,8 @@
     sortDir: 'desc',
     excludeCharacterNames: true,
     threshold: 0,
+    currentPage: 1,
+    pageSize: 50,
     rowsByN: { 1: [], 2: [], 3: [] },
     maxByN: { 1: 0, 2: 0, 3: 0 },
     rowsByNNoNames: { 1: [], 2: [], 3: [] },
@@ -261,6 +263,23 @@
             </thead>
             <tbody id="playDetailTableBody"></tbody>
           </table>
+          <div class="pagination play-detail-pagination is-hidden" id="playDetailPagination">
+            <button type="button" id="playDetailFirstPage">First</button>
+            <button type="button" id="playDetailPrevPage">Prev</button>
+            <span class="page-info" id="playDetailPageInfo">Page 1 of 1</span>
+            <button type="button" id="playDetailNextPage">Next</button>
+            <button type="button" id="playDetailLastPage">Last</button>
+            <label>
+              Rows per page:
+              <select id="playDetailPageSize">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+              </select>
+            </label>
+            <span class="page-info" id="playDetailTotalInfo"></span>
+          </div>
         </div>
       </div>
     `;
@@ -276,6 +295,14 @@
     const metaEl = overlay.querySelector('#playDetailMeta');
     const filterNamesToggle = overlay.querySelector('#playDetailFilterNames');
     const filterDisclosureEl = overlay.querySelector('#playDetailFilterDisclosure');
+    const paginationEl = overlay.querySelector('#playDetailPagination');
+    const firstPageBtn = overlay.querySelector('#playDetailFirstPage');
+    const prevPageBtn = overlay.querySelector('#playDetailPrevPage');
+    const nextPageBtn = overlay.querySelector('#playDetailNextPage');
+    const lastPageBtn = overlay.querySelector('#playDetailLastPage');
+    const pageSizeEl = overlay.querySelector('#playDetailPageSize');
+    const pageInfoEl = overlay.querySelector('#playDetailPageInfo');
+    const totalInfoEl = overlay.querySelector('#playDetailTotalInfo');
     const tabBtns = Array.from(overlay.querySelectorAll('.play-detail-tab-btn'));
     const sortableHeaders = Array.from(overlay.querySelectorAll('th[data-key]'));
 
@@ -283,6 +310,7 @@
       loading.textContent = msg || 'Computing...';
       setElementHidden(loading, false);
       setElementHidden(table, true);
+      setElementHidden(paginationEl, true);
     }
 
     function updateSliderUi() {
@@ -362,7 +390,21 @@
       const threshold = playDetailState.threshold || 0;
       const filtered = threshold > 0 ? rows.filter(r => r.tfidf >= threshold) : rows.slice();
       const sorted = pdSortRows(filtered);
+      const totalPages = window.getTotalPages(sorted.length, playDetailState.pageSize);
+      if (playDetailState.currentPage > totalPages) playDetailState.currentPage = totalPages;
+      const pageRows = window.paginateArray(sorted, playDetailState.currentPage, playDetailState.pageSize);
+      const pageStart = (playDetailState.currentPage - 1) * playDetailState.pageSize;
       updateSortIndicators();
+
+      if (paginationEl) {
+        setElementHidden(paginationEl, sorted.length <= playDetailState.pageSize);
+      }
+      if (pageInfoEl) pageInfoEl.textContent = `Page ${playDetailState.currentPage} of ${totalPages}`;
+      if (totalInfoEl) totalInfoEl.textContent = `(${sorted.length} total n-grams)`;
+      if (firstPageBtn) firstPageBtn.disabled = playDetailState.currentPage === 1;
+      if (prevPageBtn) prevPageBtn.disabled = playDetailState.currentPage === 1;
+      if (nextPageBtn) nextPageBtn.disabled = playDetailState.currentPage === totalPages;
+      if (lastPageBtn) lastPageBtn.disabled = playDetailState.currentPage === totalPages;
 
       if (!sorted.length) {
         const emptyMsg = (threshold > 0)
@@ -375,11 +417,11 @@
       }
 
       const html = [];
-      for (let i = 0; i < sorted.length; i++) {
-        const row = sorted[i];
+      for (let i = 0; i < pageRows.length; i++) {
+        const row = pageRows[i];
         html.push(
           `<tr>` +
-          `<td>${i + 1}</td>` +
+          `<td>${pageStart + i + 1}</td>` +
           `<td>${escapeHTML(row.ngram)}</td>` +
           `<td>${row.count}</td>` +
           `<td>${row.tfidf.toFixed(4)}</td>` +
@@ -391,8 +433,10 @@
 
     function setTab(n) {
       playDetailState.currentN = n;
+      playDetailState.currentPage = 1;
       tabBtns.forEach(btn => btn.classList.toggle('active', Number(btn.dataset.n) === n));
       playDetailState.threshold = 0;
+    playDetailState.currentPage = 1;
       playDetailState.sortKey = 'count';
       playDetailState.sortDir = 'desc';
       updateSliderUi();
@@ -405,6 +449,7 @@
 
     slider.addEventListener('input', () => {
       playDetailState.threshold = Number(slider.value) || 0;
+      playDetailState.currentPage = 1;
       if (playDetailState.threshold === 0) {
         playDetailState.sortKey = 'count';
         playDetailState.sortDir = 'desc';
@@ -416,6 +461,7 @@
     if (filterNamesToggle) {
       filterNamesToggle.addEventListener('change', () => {
         playDetailState.excludeCharacterNames = !!filterNamesToggle.checked;
+        playDetailState.currentPage = 1;
         updateSliderUi();
         renderFilterDisclosure();
         renderRows();
@@ -440,9 +486,51 @@
           playDetailState.sortKey = clickedKey;
           playDetailState.sortDir = (clickedKey === 'ngram' ? 'asc' : 'desc');
         }
+        playDetailState.currentPage = 1;
         renderRows();
       });
     });
+
+    if (firstPageBtn) {
+      firstPageBtn.addEventListener('click', () => {
+        playDetailState.currentPage = 1;
+        renderRows();
+      });
+    }
+    if (prevPageBtn) {
+      prevPageBtn.addEventListener('click', () => {
+        if (playDetailState.currentPage <= 1) return;
+        playDetailState.currentPage -= 1;
+        renderRows();
+      });
+    }
+    if (nextPageBtn) {
+      nextPageBtn.addEventListener('click', () => {
+        const rows = rowsForCurrentSelection();
+        const threshold = playDetailState.threshold || 0;
+        const filtered = threshold > 0 ? rows.filter(r => r.tfidf >= threshold) : rows;
+        const totalPages = window.getTotalPages(filtered.length, playDetailState.pageSize);
+        if (playDetailState.currentPage >= totalPages) return;
+        playDetailState.currentPage += 1;
+        renderRows();
+      });
+    }
+    if (lastPageBtn) {
+      lastPageBtn.addEventListener('click', () => {
+        const rows = rowsForCurrentSelection();
+        const threshold = playDetailState.threshold || 0;
+        const filtered = threshold > 0 ? rows.filter(r => r.tfidf >= threshold) : rows;
+        playDetailState.currentPage = window.getTotalPages(filtered.length, playDetailState.pageSize);
+        renderRows();
+      });
+    }
+    if (pageSizeEl) {
+      pageSizeEl.addEventListener('change', (e) => {
+        playDetailState.pageSize = Number.parseInt(e.target.value, 10) || 50;
+        playDetailState.currentPage = 1;
+        renderRows();
+      });
+    }
 
     closeBtn.addEventListener('click', closePlayDetailModal);
     overlay.addEventListener('click', (e) => {
@@ -450,7 +538,7 @@
     });
 
     playDetailEls = {
-      overlay, loading, table, titleEl, metaEl, filterNamesToggle, setLoading, setTab, updateSliderUi, renderRows, renderFilterDisclosure
+      overlay, loading, table, titleEl, metaEl, filterNamesToggle, pageSizeEl, setLoading, setTab, updateSliderUi, renderRows, renderFilterDisclosure
     };
     return playDetailEls;
   }
@@ -558,6 +646,7 @@
     modal.titleEl.textContent = play.title || play.abbr || 'Unknown canto';
     modal.metaEl.textContent = `${play.genre || 'Unknown canticle'} \u00b7 ${totalWords} words \u00b7 ${totalVerses} lines \u00b7 ${chapters} section${chapters === 1 ? '' : 's'}`;
     if (modal.filterNamesToggle) modal.filterNamesToggle.checked = true;
+    if (modal.pageSizeEl) modal.pageSizeEl.value = String(playDetailState.pageSize);
     modal.overlay.classList.add('open');
     modal.setLoading('Computing...');
     modal.updateSliderUi();
