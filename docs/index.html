@@ -657,7 +657,7 @@
       loadingMessage.textContent = message;
     }
     if (loadingIndicator) {
-      loadingIndicator.classList.toggle('is-hidden', !isLoading);
+      setElementHidden(loadingIndicator, !isLoading);
     }
   }
 
