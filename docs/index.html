@@ -14,6 +14,12 @@
   <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
+  <div id="loadingIndicator" class="loading-indicator" role="status" aria-live="polite">
+    <div class="loading-indicator-card">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <p id="loadingMessage" class="loading-message">Loading data...</p>
+    </div>
+  </div>
   <h1><a href="https://contabulate.org/">Contabulate</a>: 🔥 Divina Commedia Tabular Search</h1>
   <p class="muted">Search words, bigrams, or trigrams across canticles, cantos, terzine, and individual lines in Dante's Italian text. Use regex (e.g., <code>^selva$</code>) or plain text. Source text courtesy of <a href="https://www.gutenberg.org/ebooks/1000" target="_blank">Project Gutenberg eBook #1000</a>.</p>
 
@@ -643,6 +649,18 @@
     });
   });
 
+  const loadingIndicator = document.getElementById('loadingIndicator');
+  const loadingMessage = document.getElementById('loadingMessage');
+
+  function setLoadingState(isLoading, message) {
+    if (loadingMessage && typeof message === 'string' && message) {
+      loadingMessage.textContent = message;
+    }
+    if (loadingIndicator) {
+      loadingIndicator.classList.toggle('is-hidden', !isLoading);
+    }
+  }
+
   async function loadJSON(path) {
     const res = await fetch(path);
     if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`);
@@ -650,6 +668,7 @@
   }
 
   let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null;
+  setLoadingState(true, "Loading data...");
   try {
     [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig] = await Promise.all([
       loadJSON('data/chunks.json'),
@@ -1852,6 +1871,8 @@
     if (!linesTabController) return;
     linesTabController.doSearch();
   }
+
+  setLoadingState(false);
 
   // initial state for contexts tab (only if no deep link state applied)
   if (!appliedDeepLinkState) {
