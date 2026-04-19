@@ -695,6 +695,10 @@
     allLines = await loadJSON('lines/all_lines.json');
   } catch(e) {
     console.warn('Line data not available:', e);
+  } finally {
+    // FIX-loading-early-dismiss: clear overlay once data settles,
+    // so a downstream init throw does not leave the spinner frozen.
+    try { setLoadingState(false); } catch(_) {}
   }
 
   const chunkById = new Map(chunks.map(r => [r.scene_id, r]));
