@@ -225,8 +225,13 @@ def build_dataset(source_text: str) -> dict[str, object]:
             chunk_tokens = tokenize(chunk_text)
             total_words += len(chunk_tokens)
 
-            canonical_id = f"{ABBR_BY_CANTICLE[section.canticle]}.1.{terzina_number}"
-            location = f"{play_location}.001.{terzina_number:03d}"
+            first_line_number = line_number
+            last_line_number = line_number + len(terzina_lines) - 1
+            canonical_id = (
+                f"{ABBR_BY_CANTICLE[section.canticle]}.{section.canto_number:02d}."
+                f"{first_line_number:03d}-{last_line_number:03d}"
+            )
+            location = f"{play_location}.{first_line_number:03d}-{last_line_number:03d}"
             chunks.append(
                 {
                     "scene_id": scene_id,
@@ -252,11 +257,15 @@ def build_dataset(source_text: str) -> dict[str, object]:
             update_ngram_index(tokens3, (" ".join(chunk_tokens[i:i + 3]) for i in range(len(chunk_tokens) - 2)), scene_id)
 
             for line in terzina_lines:
+                line_canonical_id = f"{ABBR_BY_CANTICLE[section.canticle]}.{section.canto_number:02d}.{line_number:03d}"
+                line_location = f"{play_location}.{line_number:03d}"
                 all_lines.append(
                     {
                         "play_id": play_id,
-                        "canonical_id": canonical_id,
-                        "location": location,
+                        "canonical_id": line_canonical_id,
+                        "chunk_id": canonical_id,
+                        "location": line_location,
+                        "chunk_location": location,
                         "act": 1,
                         "scene": terzina_number,
                         "line_num": line_number,
