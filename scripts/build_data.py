@@ -32,6 +32,7 @@ DATA_DIR = ROOT / "docs" / "data"
 LINES_DIR = ROOT / "docs" / "lines"
 CACHE_DIR = ROOT / "source_text"
 CACHE_FILE = CACHE_DIR / "pg1000.txt"
+COMMENTARY_COUNTS_FILE = CACHE_DIR / "ddp_commentary_counts.json"
 
 CANTICLES = [
     ("Inferno", "INFERNO", "Inf"),
@@ -201,7 +202,23 @@ def update_ngram_index(index: dict[str, list[list[int]]], terms: Iterable[str], 
         index[term].append([chunk_id, count])
 
 
+def load_commentary_counts(path: Path = COMMENTARY_COUNTS_FILE) -> dict[str, int]:
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    raw_counts = payload.get("lines", payload) if isinstance(payload, dict) else {}
+    counts: dict[str, int] = {}
+    if isinstance(raw_counts, dict):
+        for key, value in raw_counts.items():
+            try:
+                counts[str(key)] = int(value or 0)
+            except (TypeError, ValueError):
+                counts[str(key)] = 0
+    return counts
+
+
 def build_dataset(source_text: str) -> dict[str, object]:
+    commentary_counts = load_commentary_counts()
     sections = extract_cantos(source_text)
     plays = []
     chunks = []
@@ -218,6 +235,7 @@ def build_dataset(source_text: str) -> dict[str, object]:
         terzine = group_terzine(poem_lines)
         play_location = f"{play_id:02d}.{ABBR_BY_CANTICLE[section.canticle]}.{section.canto_number:03d}"
         total_words = 0
+        total_commentary_interest = 0
 
         line_number = 1
         for terzina_number, terzina_lines in enumerate(terzine, start=1):
@@ -232,6 +250,15 @@ def build_dataset(source_text: str) -> dict[str, object]:
                 f"{first_line_number:03d}-{last_line_number:03d}"
             )
             location = f"{play_location}.{first_line_number:03d}-{last_line_number:03d}"
+            chunk_commentary_interest = sum(
+                commentary_counts.get(
+                    f"{ABBR_BY_CANTICLE[section.canticle]}.{section.canto_number:02d}.{line_no:03d}",
+                    0,
+                )
+                for line_no in range(first_line_number, last_line_number + 1)
+            )
+            total_commentary_interest += chunk_commentary_interest
+
             chunks.append(
                 {
                     "scene_id": scene_id,
@@ -249,6 +276,7 @@ def build_dataset(source_text: str) -> dict[str, object]:
                     "num_speeches": 0,
                     "num_lines": len(terzina_lines),
                     "characters_present_count": 0,
+                    "commentary_interest": chunk_commentary_interest,
                 }
             )
 
@@ -259,6 +287,7 @@ def build_dataset(source_text: str) -> dict[str, object]:
             for line in terzina_lines:
                 line_canonical_id = f"{ABBR_BY_CANTICLE[section.canticle]}.{section.canto_number:02d}.{line_number:03d}"
                 line_location = f"{play_location}.{line_number:03d}"
+                line_commentary_interest = commentary_counts.get(line_canonical_id, 0)
                 all_lines.append(
                     {
                         "play_id": play_id,
@@ -271,6 +300,7 @@ def build_dataset(source_text: str) -> dict[str, object]:
                         "line_num": line_number,
                         "speaker": "",
                         "text": line,
+                        "commentary_interest": line_commentary_interest,
                     }
                 )
                 line_number += 1
@@ -290,6 +320,7 @@ def build_dataset(source_text: str) -> dict[str, object]:
                 "num_speeches": 0,
                 "total_words": total_words,
                 "total_lines": len(poem_lines),
+                "commentary_interest": total_commentary_interest,
             }
         )
         play_id += 1
@@ -324,6 +355,21 @@ def main() -> int:
     write_json(DATA_DIR / "tokens2.json", dataset["tokens2"])
     write_json(DATA_DIR / "tokens3.json", dataset["tokens3"])
     write_json(LINES_DIR / "all_lines.json", dataset["all_lines"])
+    write_json(
+        DATA_DIR / "commentary_interest.json",
+        {
+            "metadata": {
+                "source": "Dartmouth Dante Project",
+                "source_url": "https://dante.dartmouth.edu/",
+                "columns": [{"key": "interest", "label": "# comments", "name": "DDP commentary results"}],
+            },
+            "summary": {
+                "source_file": str(COMMENTARY_COUNTS_FILE.relative_to(ROOT)),
+                "lines_with_interest": sum(1 for row in dataset["all_lines"] if row.get("commentary_interest", 0) > 0),
+                "total_interest": sum(int(row.get("commentary_interest", 0) or 0) for row in dataset["all_lines"]),
+            },
+        },
+    )
 
     # The Dante app does not use characters, but keeping explicit empty files
     # avoids special-casing shared UI code.

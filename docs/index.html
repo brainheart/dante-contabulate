@@ -667,10 +667,10 @@
     return res.json();
   }
 
-  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null;
+  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null, commentaryInterest=null;
   setLoadingState(true, "Loading data...");
   try {
-    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig] = await Promise.all([
+    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig, commentaryInterest] = await Promise.all([
       loadJSON('data/chunks.json'),
       loadJSON('data/tokens.json'),
       loadJSON('data/tokens2.json'),
@@ -681,6 +681,7 @@
       loadJSON('data/tokens_char2.json'),
       loadJSON('data/tokens_char3.json'),
       loadJSON('data/character_name_filter_config.json').catch(() => null),
+      loadJSON('data/commentary_interest.json').catch(() => null),
     ]);
   } catch(e) {
     setLoadingState(true, 'Unable to load data. Please reload the page.');
@@ -724,13 +725,45 @@
 
   renderExtraTerms();
 
+  function getCommentaryFieldKeys() {
+    return ['commentary_interest'];
+  }
+  function copyCommentaryFields(source) {
+    const out = {};
+    getCommentaryFieldKeys().forEach(key => {
+      const value = Number(source && source[key]);
+      out[key] = Number.isFinite(value) ? value : 0;
+    });
+    return out;
+  }
+  function addCommentaryFields(target, source) {
+    Object.assign(target, copyCommentaryFields(source));
+    return target;
+  }
+  function getCommentaryColumns() {
+    return [{ key: 'commentary_interest', label: '# comments', type: 'number', defaultDir: 'desc' }];
+  }
+
   // Precompute act/play totals (must be before applyStateFromURL which may call doSearch→denomFor)
   const actTotals = new Map();
   const playTotals = new Map();
+  const actCommentaryTotals = new Map();
+  const genreCommentaryTotals = new Map();
   for (const r of chunks) {
     const k = `${r.play_id}:${r.act}`;
     actTotals.set(k, (actTotals.get(k)||0) + (r.total_words||0));
     playTotals.set(r.play_id, (playTotals.get(r.play_id)||0) + (r.total_words||0));
+    const actCommentary = actCommentaryTotals.get(k) || copyCommentaryFields(null);
+    getCommentaryFieldKeys().forEach(key => {
+      actCommentary[key] = (actCommentary[key] || 0) + (Number(r[key]) || 0);
+    });
+    actCommentaryTotals.set(k, actCommentary);
+    const genre = r.genre || 'unknown';
+    const genreCommentary = genreCommentaryTotals.get(genre) || copyCommentaryFields(null);
+    getCommentaryFieldKeys().forEach(key => {
+      genreCommentary[key] = (genreCommentary[key] || 0) + (Number(r[key]) || 0);
+    });
+    genreCommentaryTotals.set(genre, genreCommentary);
   }
 
   // Apply state from deep link if present
@@ -958,28 +991,34 @@
       }
     });
   }
+  function getCanticleOrder(value) {
+    const s = String(value || '');
+    if (s === 'Inferno' || s.startsWith('Inf')) return 1;
+    if (s === 'Purgatorio' || s.startsWith('Purg')) return 2;
+    if (s === 'Paradiso' || s.startsWith('Par')) return 3;
+    return 99;
+  }
+  function getLocationSortValue(row) {
+    if (!row) return Number.POSITIVE_INFINITY;
+    if (Number.isFinite(Number(row.location_sort))) return Number(row.location_sort);
+    const playPart = Number(row.play_id) || 0;
+    const actPart = Number(row.act) || 0;
+    const scenePart = Number(row.scene) || 0;
+    const linePart = Number(row.line_num) || 0;
+    return (playPart * 1000000000) + (actPart * 1000000) + (scenePart * 1000) + linePart;
+  }
   function sortRows(rows){
     if (!sortKey) return rows;
-    const parseIdParts = (id) => {
-      const s = String(id || '');
-      const parts = s.split('.');
-      const abbr = parts[0] || '';
-      const act = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
-      const scene = parts.length > 2 ? parseInt(parts[2], 10) || 0 : 0;
-      const line = parts.length > 3 ? parseInt(parts[3], 10) || 0 : 0;
-      return { abbr, act, scene, line };
-    };
     rows.sort((a,b) => {
-      const av = a[sortKey], bv = b[sortKey];
-      if (sortKey === 'id') {
-        const aa = parseIdParts(av);
-        const bb = parseIdParts(bv);
-        let cmp = aa.abbr.localeCompare(bb.abbr);
-        if (cmp === 0) cmp = aa.act - bb.act;
-        if (cmp === 0) cmp = aa.scene - bb.scene;
-        if (cmp === 0) cmp = aa.line - bb.line;
+      if (sortKey === 'location' || sortKey === 'id') {
+        const cmp = getLocationSortValue(a) - getLocationSortValue(b);
         return sortDir === 'asc' ? cmp : -cmp;
       }
+      if (sortKey === 'genre') {
+        const cmp = getCanticleOrder(a && a.genre) - getCanticleOrder(b && b.genre);
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+      const av = a[sortKey], bv = b[sortKey];
       if (typeof av === 'string' || typeof bv === 'string') {
         return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
       }
@@ -1241,7 +1280,7 @@
             const totalWords = m.total_words || 0;
             const ngramCount = getRowNgramCount(totalWords);
             const playMeta = playsById.get(m.play_id) || { play_id: m.play_id, abbr: m.play_abbr, location: m.location };
-            return { id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id: m.scene_id, act_label: m.act_label, scene_label: m.scene_label };
+            return addCommentaryFields({ id: m.canonical_id, location: m.canonical_id || m.location || getVerseLocation(playMeta, m.act, m.scene), location_sort: m.scene_id, play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id: m.scene_id, act_label: m.act_label, scene_label: m.scene_label }, m);
           });
         });
       } else if (granVal === 'act') {
@@ -1253,7 +1292,7 @@
           if (!play) continue;
           ensureRow(k, () => {
             const ngramCount = getRowNgramCount(total_words);
-            return { id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
+            return addCommentaryFields({ id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), location_sort: pid * 1000000000 + actNum * 1000000, play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount }, actCommentaryTotals.get(k));
           });
         }
       } else if (granVal === 'play') {
@@ -1261,14 +1300,14 @@
           ensureRow(p.play_id, () => {
             const total_words = p.total_words ?? 0;
             const ngramCount = getRowNgramCount(total_words);
-            return { play_id:p.play_id, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+            return addCommentaryFields({ play_id:p.play_id, location:getBookLocation(p), location_sort: p.play_id * 1000000000, title:p.title, genre:p.genre, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount }, p);
           });
         });
       } else if (granVal === 'genre') {
         for (const [genre, totalWords] of genreTotals.entries()) {
           ensureRow(genre, () => {
             const ngramCount = getRowNgramCount(totalWords);
-            return { genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount };
+            return addCommentaryFields({ genre, location_sort: getCanticleOrder(genre) * 1000000000, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount }, genreCommentaryTotals.get(genre));
           });
         }
       } else if (granVal === 'character') {
@@ -1309,9 +1348,10 @@
         const clean = (ln.text || '').toString().replace(/\s+/g, ' ').trim();
         let hasTerm = false;
         const play = playsById.get(ln.play_id) || { play_id: ln.play_id };
-        const row = {
+        const row = addCommentaryFields({
           id: ln.canonical_id,
-          location: ln.location || getVerseLocation(play, ln.act, ln.scene),
+          location: ln.canonical_id || ln.location || getVerseLocation(play, ln.act, ln.scene),
+          location_sort: (Number(ln.play_id) || 0) * 1000000000 + (Number(ln.line_num) || 0),
           play_id: ln.play_id,
           play_title: play.title || '',
           act: ln.act,
@@ -1321,7 +1361,7 @@
           line_num: ln.line_num,
           speaker: ln.speaker || '',
           line: clean
-        };
+        }, ln);
         const matchedNgrams = [];
         lineMatchers.forEach((m, idx) => {
           if (!m) return;
@@ -1355,16 +1395,15 @@
       const baseCols = [
         { key: 'location', label: 'Location', defaultDir: 'asc', type: 'text' },
         { key: 'play_title', label: 'Canto', defaultDir: 'asc', type: 'text' },
-        { key: 'scene', label: 'Terzina', type: 'number' }
+        { key: 'scene', label: 'Terzina', type: 'number' },
+        ...getCommentaryColumns()
       ];
       const termCols = buildTermColumns();
       baseCols.push(...termCols);
       baseCols.push({ key: 'line', label: 'Line', type: 'text' });
       setHeaders(baseCols);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        const defaultSortKey = termCols[0]?.key || 'location';
-        const defaultSortDir = termCols.length ? 'desc' : 'asc';
-        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
+        ensureSegmentsSortForColumns(segmentsColumnDefs, 'location', 'asc');
       }
       return finalizeRows();
     }
@@ -1374,6 +1413,7 @@
         {key:'location', label:'Location', defaultDir:'asc', type:'text'},
         {key:'play_title', label:'Canto', defaultDir:'asc', type:'text'},
         {key:'scene', label:'Terzina', type:'number'},
+        ...getCommentaryColumns(),
         {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1384,7 +1424,7 @@
             const totalWords = m.total_words || 0;
             const ngramCount = getRowNgramCount(totalWords);
             const playMeta = playsById.get(m.play_id) || { play_id: m.play_id, abbr: m.play_abbr, location: m.location };
-            return { id: m.canonical_id, location: m.location || getVerseLocation(playMeta, m.act, m.scene), play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id };
+            return addCommentaryFields({ id: m.canonical_id, location: m.canonical_id || m.location || getVerseLocation(playMeta, m.act, m.scene), location_sort: m.scene_id, play_title: m.play_title, genre:m.genre, play_id:m.play_id, act:m.act, scene:m.scene, total_words:totalWords, ngram_count:ngramCount, scene_id }, m);
           });
           const d = denomFor(normalizeTermN(term.n) || 1,'scene',m);
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1394,9 +1434,7 @@
       const termCols = buildTermColumns();
       setHeaders([...baseCols, ...termCols]);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        const defaultSortKey = termCols[0]?.key || 'location';
-        const defaultSortDir = termCols.length ? 'desc' : 'asc';
-        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
+        ensureSegmentsSortForColumns(segmentsColumnDefs, 'location', 'asc');
       }
       return finalizeRows();
     }
@@ -1405,7 +1443,7 @@
       const baseCols = [
         {key:'location', label:'Location', defaultDir:'asc', type:'text'},
         {key:'play_title', label:'Canto', defaultDir:'asc', type:'text'},
-        {key:'act', label:'Section', type:'number'},
+        ...getCommentaryColumns(),
         {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1425,7 +1463,7 @@
           const row = ensureRow(k, () => {
             const total_words = actTotals.get(k) || 0;
             const ngramCount = getRowNgramCount(total_words);
-            return { id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount };
+            return addCommentaryFields({ id: `${play.abbr}.${actNum}`, location:getChapterLocation(play, actNum), location_sort: pid * 1000000000 + actNum * 1000000, play_title: play.title, genre:play.genre, play_id:pid, act:actNum, total_words, ngram_count:ngramCount }, actCommentaryTotals.get(k));
           });
           const d = denomFor(normalizeTermN(term.n) || 1,'act',{play_id:pid,act:actNum});
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1435,9 +1473,7 @@
       const termCols = buildTermColumns();
       setHeaders([...baseCols, ...termCols]);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        const defaultSortKey = termCols[0]?.key || 'location';
-        const defaultSortDir = termCols.length ? 'desc' : 'asc';
-        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
+        ensureSegmentsSortForColumns(segmentsColumnDefs, 'location', 'asc');
       }
       return finalizeRows();
     }
@@ -1447,7 +1483,7 @@
         {key:'location', label:'Location', defaultDir:'asc', type:'text'},
         {key:'title', label:'Canto', defaultDir:'asc', type:'text'},
         {key:'genre', label:'Canticle', defaultDir:'asc', type:'text'},
-        {key:'num_chapters', label:'# sections', type:'number'},
+        ...getCommentaryColumns(),
         {key:'num_lines', label:'# lines', type:'number'},
         {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
       ];
@@ -1464,7 +1500,7 @@
           const row = ensureRow(pid, () => {
             const total_words = p.total_words ?? 0;
             const ngramCount = getRowNgramCount(total_words);
-            return { play_id:pid, location:getBookLocation(p), title:p.title, genre:p.genre, num_chapters:p.num_acts ?? 0, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount };
+            return addCommentaryFields({ play_id:pid, location:getBookLocation(p), location_sort: pid * 1000000000, title:p.title, genre:p.genre, num_lines:p.total_lines ?? 0, total_words, ngram_count:ngramCount }, p);
           });
           const d = denomFor(normalizeTermN(term.n) || 1,'play',{play_id:pid});
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1474,9 +1510,7 @@
       const termCols = buildTermColumns();
       setHeaders([...baseCols, ...termCols]);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        const defaultSortKey = termCols[0]?.key || 'location';
-        const defaultSortDir = termCols.length ? 'desc' : 'asc';
-        ensureSegmentsSortForColumns(segmentsColumnDefs, defaultSortKey, defaultSortDir);
+        ensureSegmentsSortForColumns(segmentsColumnDefs, 'location', 'asc');
       }
       return finalizeRows();
     }
@@ -1485,6 +1519,7 @@
       const baseCols = [
         {key:'genre', label:'Canticle', defaultDir:'asc', type:'text'},
         {key:'num_plays', label:'# cantos', type:'number'},
+        ...getCommentaryColumns(),
         {key:'ngram_count', label: getBaseCountLabel(), type:'number'}
       ];
       activeTerms.forEach((term, termIdx) => {
@@ -1499,7 +1534,7 @@
           const totalWords = genreTotals.get(genre) || 0;
           const row = ensureRow(genre, () => {
             const ngramCount = getRowNgramCount(totalWords);
-            return { genre, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount };
+            return addCommentaryFields({ genre, location_sort: getCanticleOrder(genre) * 1000000000, num_plays: genrePlayCounts.get(genre) || 0, total_words: totalWords, ngram_count:ngramCount }, genreCommentaryTotals.get(genre));
           });
           const denom = denomFor(normalizeTermN(term.n) || 1, 'genre', { total_words: totalWords });
           row[`${termKeys[termIdx]}_count`] = count;
@@ -1509,7 +1544,7 @@
       const termCols = buildTermColumns();
       setHeaders([...baseCols, ...termCols]);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+        ensureSegmentsSortForColumns(segmentsColumnDefs, 'genre', 'asc');
       }
       return finalizeRows();
     }
@@ -1542,7 +1577,7 @@
       const termCols = buildTermColumns();
       setHeaders([...baseCols, ...termCols]);
       if (!applyPreferredTermSort(termCols, preferredSortTermIndex)) {
-        ensureSegmentsSortForColumns(segmentsColumnDefs, termCols[0]?.key, 'desc');
+        ensureSegmentsSortForColumns(segmentsColumnDefs, 'genre', 'asc');
       }
       return finalizeRows();
     }
