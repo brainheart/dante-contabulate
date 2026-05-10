@@ -202,23 +202,57 @@ def update_ngram_index(index: dict[str, list[list[int]]], terms: Iterable[str], 
         index[term].append([chunk_id, count])
 
 
-def load_commentary_counts(path: Path = COMMENTARY_COUNTS_FILE) -> dict[str, int]:
+def load_commentary_payload(path: Path = COMMENTARY_COUNTS_FILE) -> dict[str, object]:
     if not path.exists():
-        return {}
+        return {"lines": {}, "commentators": []}
     payload = json.loads(path.read_text(encoding="utf-8"))
     raw_counts = payload.get("lines", payload) if isinstance(payload, dict) else {}
-    counts: dict[str, int] = {}
+    metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+    commentators = metadata.get("commentators", []) if isinstance(metadata, dict) else []
+    lines: dict[str, dict[str, object]] = {}
     if isinstance(raw_counts, dict):
         for key, value in raw_counts.items():
-            try:
-                counts[str(key)] = int(value or 0)
-            except (TypeError, ValueError):
-                counts[str(key)] = 0
-    return counts
+            if isinstance(value, dict):
+                try:
+                    total = int(value.get("total", value.get("commentary_interest", 0)) or 0)
+                except (TypeError, ValueError):
+                    total = 0
+                raw_commentaries = value.get("commentaries") if isinstance(value.get("commentaries"), dict) else {}
+                commentaries = {}
+                for comm_id, comm_count in raw_commentaries.items():
+                    try:
+                        commentaries[str(comm_id)] = int(comm_count or 0)
+                    except (TypeError, ValueError):
+                        commentaries[str(comm_id)] = 0
+                lines[str(key)] = {"total": total, "commentaries": commentaries}
+            else:
+                try:
+                    lines[str(key)] = {"total": int(value or 0), "commentaries": {}}
+                except (TypeError, ValueError):
+                    lines[str(key)] = {"total": 0, "commentaries": {}}
+    return {"lines": lines, "commentators": commentators}
+
+
+def commentary_fields_for_line(line_id: str, commentary_counts: dict[str, dict[str, object]]) -> dict[str, int]:
+    payload = commentary_counts.get(line_id, {})
+    total = int(payload.get("total", 0) or 0) if isinstance(payload, dict) else 0
+    fields = {"commentary_interest": total}
+    commentaries = payload.get("commentaries", {}) if isinstance(payload, dict) else {}
+    if isinstance(commentaries, dict):
+        for comm_id, count in commentaries.items():
+            fields[f"commentary_{comm_id}"] = int(count or 0)
+    return fields
+
+
+def add_commentary_fields(target: dict[str, object], fields: dict[str, int]) -> None:
+    for key, value in fields.items():
+        target[key] = int(target.get(key, 0) or 0) + int(value or 0)
 
 
 def build_dataset(source_text: str) -> dict[str, object]:
-    commentary_counts = load_commentary_counts()
+    commentary_payload = load_commentary_payload()
+    commentary_counts = commentary_payload["lines"]
+    commentary_commentators = commentary_payload["commentators"]
     sections = extract_cantos(source_text)
     plays = []
     chunks = []
@@ -235,7 +269,6 @@ def build_dataset(source_text: str) -> dict[str, object]:
         terzine = group_terzine(poem_lines)
         play_location = f"{play_id:02d}.{ABBR_BY_CANTICLE[section.canticle]}.{section.canto_number:03d}"
         total_words = 0
-        total_commentary_interest = 0
 
         line_number = 1
         for terzina_number, terzina_lines in enumerate(terzine, start=1):
@@ -250,35 +283,33 @@ def build_dataset(source_text: str) -> dict[str, object]:
                 f"{first_line_number:03d}-{last_line_number:03d}"
             )
             location = f"{play_location}.{first_line_number:03d}-{last_line_number:03d}"
-            chunk_commentary_interest = sum(
-                commentary_counts.get(
+            chunk_commentary_fields: dict[str, int] = {}
+            for line_no in range(first_line_number, last_line_number + 1):
+                line_fields = commentary_fields_for_line(
                     f"{ABBR_BY_CANTICLE[section.canticle]}.{section.canto_number:02d}.{line_no:03d}",
-                    0,
+                    commentary_counts,
                 )
-                for line_no in range(first_line_number, last_line_number + 1)
-            )
-            total_commentary_interest += chunk_commentary_interest
+                add_commentary_fields(chunk_commentary_fields, line_fields)
 
-            chunks.append(
-                {
-                    "scene_id": scene_id,
-                    "canonical_id": canonical_id,
-                    "location": location,
-                    "play_id": play_id,
-                    "play_title": section.title,
-                    "play_abbr": section.abbr,
-                    "genre": section.canticle,
-                    "act": 1,
-                    "scene": terzina_number,
-                    "heading": f"{section.title} {terzina_number}",
-                    "total_words": len(chunk_tokens),
-                    "unique_words": len(set(chunk_tokens)),
-                    "num_speeches": 0,
-                    "num_lines": len(terzina_lines),
-                    "characters_present_count": 0,
-                    "commentary_interest": chunk_commentary_interest,
-                }
-            )
+            chunk_record = {
+                "scene_id": scene_id,
+                "canonical_id": canonical_id,
+                "location": location,
+                "play_id": play_id,
+                "play_title": section.title,
+                "play_abbr": section.abbr,
+                "genre": section.canticle,
+                "act": 1,
+                "scene": terzina_number,
+                "heading": f"{section.title} {terzina_number}",
+                "total_words": len(chunk_tokens),
+                "unique_words": len(set(chunk_tokens)),
+                "num_speeches": 0,
+                "num_lines": len(terzina_lines),
+                "characters_present_count": 0,
+            }
+            chunk_record.update(chunk_commentary_fields)
+            chunks.append(chunk_record)
 
             update_ngram_index(tokens1, chunk_tokens, scene_id)
             update_ngram_index(tokens2, (" ".join(chunk_tokens[i:i + 2]) for i in range(len(chunk_tokens) - 1)), scene_id)
@@ -287,42 +318,47 @@ def build_dataset(source_text: str) -> dict[str, object]:
             for line in terzina_lines:
                 line_canonical_id = f"{ABBR_BY_CANTICLE[section.canticle]}.{section.canto_number:02d}.{line_number:03d}"
                 line_location = f"{play_location}.{line_number:03d}"
-                line_commentary_interest = commentary_counts.get(line_canonical_id, 0)
-                all_lines.append(
-                    {
-                        "play_id": play_id,
-                        "canonical_id": line_canonical_id,
-                        "chunk_id": canonical_id,
-                        "location": line_location,
-                        "chunk_location": location,
-                        "act": 1,
-                        "scene": terzina_number,
-                        "line_num": line_number,
-                        "speaker": "",
-                        "text": line,
-                        "commentary_interest": line_commentary_interest,
-                    }
-                )
+                line_commentary_fields = commentary_fields_for_line(line_canonical_id, commentary_counts)
+                line_record = {
+                    "play_id": play_id,
+                    "canonical_id": line_canonical_id,
+                    "chunk_id": canonical_id,
+                    "location": line_location,
+                    "chunk_location": location,
+                    "act": 1,
+                    "scene": terzina_number,
+                    "line_num": line_number,
+                    "speaker": "",
+                    "text": line,
+                }
+                line_record.update(line_commentary_fields)
+                all_lines.append(line_record)
                 line_number += 1
 
             scene_id += 1
 
-        plays.append(
-            {
-                "play_id": play_id,
-                "location": play_location,
-                "title": section.title,
-                "abbr": section.abbr,
-                "genre": section.canticle,
-                "first_performance_year": None,
-                "num_acts": 1,
-                "num_scenes": len(terzine),
-                "num_speeches": 0,
-                "total_words": total_words,
-                "total_lines": len(poem_lines),
-                "commentary_interest": total_commentary_interest,
-            }
-        )
+        play_commentary_fields: dict[str, int] = {}
+        for chunk in chunks:
+            if chunk.get("play_id") != play_id:
+                continue
+            for key, value in chunk.items():
+                if key == "commentary_interest" or key.startswith("commentary_"):
+                    play_commentary_fields[key] = play_commentary_fields.get(key, 0) + int(value or 0)
+        play_record = {
+            "play_id": play_id,
+            "location": play_location,
+            "title": section.title,
+            "abbr": section.abbr,
+            "genre": section.canticle,
+            "first_performance_year": None,
+            "num_acts": 1,
+            "num_scenes": len(terzine),
+            "num_speeches": 0,
+            "total_words": total_words,
+            "total_lines": len(poem_lines),
+        }
+        play_record.update(play_commentary_fields)
+        plays.append(play_record)
         play_id += 1
 
     return {
@@ -332,6 +368,7 @@ def build_dataset(source_text: str) -> dict[str, object]:
         "tokens2": dict(sorted(tokens2.items())),
         "tokens3": dict(sorted(tokens3.items())),
         "all_lines": all_lines,
+        "commentary_commentators": commentary_commentators,
     }
 
 
@@ -362,6 +399,7 @@ def main() -> int:
                 "source": "Dartmouth Dante Project",
                 "source_url": "https://dante.dartmouth.edu/",
                 "columns": [{"key": "interest", "label": "# comments", "name": "DDP commentary results"}],
+                "commentators": dataset.get("commentary_commentators", []),
             },
             "summary": {
                 "source_file": str(COMMENTARY_COUNTS_FILE.relative_to(ROOT)),

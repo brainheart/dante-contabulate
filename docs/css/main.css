@@ -266,6 +266,42 @@ td.ranked-cell {
   align-items: center;
   flex-wrap: wrap;
 }
+.commentator-column-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.commentator-column-filter {
+  min-width: 14rem;
+  font-size: 1rem;
+  padding: 0.35rem 0.5rem;
+}
+.commentator-column-select {
+  max-width: min(34rem, 100%);
+}
+.add-commentator-btn {
+  background: white;
+  color: var(--burgundy);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0.35rem 0.7rem;
+}
+.add-commentator-btn:hover:not(:disabled) {
+  background: var(--gold);
+}
+.add-commentator-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.selected-commentator-columns {
+  flex-basis: 100%;
+}
+.commentator-filter-count {
+  white-space: nowrap;
+}
+
 .deep-link-wrap {
   margin-top: 0.25rem;
   font-size: 0.95rem;

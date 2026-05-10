@@ -21,7 +21,7 @@
     </div>
   </div>
   <h1><a href="https://contabulate.org/">Contabulate</a>: 🔥 Divina Commedia Tabular Search</h1>
-  <p class="muted">Search words, bigrams, or trigrams across canticles, cantos, terzine, and individual lines in Dante's Italian text. Use regex (e.g., <code>^selva$</code>) or plain text. Source text courtesy of <a href="https://www.gutenberg.org/ebooks/1000" target="_blank">Project Gutenberg eBook #1000</a>.</p>
+  <p class="muted">Search words, bigrams, or trigrams across canticles, cantos, terzine, and individual lines in Dante's Italian text. Use regex (e.g., <code>^selva$</code>) or plain text. Source text courtesy of <a href="https://www.gutenberg.org/ebooks/1000" target="_blank">Project Gutenberg eBook #1000</a>. Commentary interest counts are derived from <a href="https://dante.dartmouth.edu/" target="_blank" rel="noopener">Dartmouth Dante Project</a> search metadata.</p>
 
   <div class="tabs is-hidden">
     <button class="tab-btn active" data-tab="segments">Rows are Contexts</button>
@@ -68,6 +68,10 @@
         <label><input type="checkbox" class="color-scale-toggle" checked> Color scale numeric columns</label>
         <label><input type="checkbox" class="highlight-toggle" checked> Highlight matching lines</label>
         <label><input type="checkbox" id="showZeroRows"> Show zero-hit rows</label>
+        <div id="commentatorColumnControls" class="commentator-column-controls" role="group" aria-label="Individual commentary columns">
+          <span class="label-strong">Commentary columns:</span>
+          <span class="muted">Loading...</span>
+        </div>
         <button id="downloadSegmentsCsv" class="download-btn" type="button">Download CSV</button>
         <div class="color-scale-options">
           <label>Palette:
@@ -213,6 +217,7 @@
   const theadRow = document.getElementById('headRow');
   const tbody = document.querySelector('#results tbody');
   const showZeroRowsToggle = document.getElementById('showZeroRows');
+  const commentatorColumnControls = document.getElementById('commentatorColumnControls');
   const addColumnBtn = document.getElementById('addColumnBtn');
   const termWarning = document.getElementById('termWarning');
   const qPlaceholderText = 'Type a search term here, then hit "Add Column"';
@@ -225,6 +230,8 @@
   let addColumnPromptStepIndex = 0;
   let extraTerms = [];
   let showZeroRows = false;
+  let selectedCommentatorColumns = new Set();
+  let commentatorColumnFilterText = '';
   const resultsTable = document.getElementById('results');
   let rankHintBubbleEl = null;
   let rankHintBubbleTimer = null;
@@ -527,6 +534,8 @@
     // Display
     p.set('cs', colorScaleState.colorScaleEnabled ? '1' : '0');
     p.set('zr', showZeroRows ? '1' : '0');
+    const selectedCommentatorsParam = getSelectedCommentatorKeys().join(',');
+    if (selectedCommentatorsParam) p.set('commentators', selectedCommentatorsParam);
     // palette and steps omitted for cleaner URLs
     p.set('hl', colorScaleState.highlightEnabled ? '1' : '0');
     // Segments
@@ -667,10 +676,10 @@
     return res.json();
   }
 
-  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null, commentaryInterest=null;
+  let chunks=[], tokens={}, tokens2={}, tokens3={}, plays=[], characters=[], tokensChar={}, tokensChar2={}, tokensChar3={}, allLines=[], characterNameFilterConfig=null, commentaryInterestConfig=null;
   setLoadingState(true, "Loading data...");
   try {
-    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig, commentaryInterest] = await Promise.all([
+    [chunks, tokens, tokens2, tokens3, plays, characters, tokensChar, tokensChar2, tokensChar3, characterNameFilterConfig, commentaryInterestConfig] = await Promise.all([
       loadJSON('data/chunks.json'),
       loadJSON('data/tokens.json'),
       loadJSON('data/tokens2.json'),
@@ -725,24 +734,190 @@
 
   renderExtraTerms();
 
-  function getCommentaryFieldKeys() {
-    return ['commentary_interest'];
+  function getCommentatorConfig() {
+    const metadata = commentaryInterestConfig && commentaryInterestConfig.metadata;
+    const commentators = metadata && Array.isArray(metadata.commentators) ? metadata.commentators : [];
+    return commentators
+      .map(item => ({
+        key: String(item && item.key || '').trim(),
+        label: String(item && (item.label || item.name || item.key) || '').trim(),
+        referenceCount: Number(item && (item.reference_count ?? item.total_references ?? item.count)) || 0
+      }))
+      .filter(item => item.key && item.label)
+      .sort((a, b) => a.label.localeCompare(b.label) || a.key.localeCompare(b.key));
   }
-  function copyCommentaryFields(source) {
+  function getSelectedCommentatorKeys() {
+    const allowed = new Set(getCommentatorConfig().map(item => item.key));
+    return Array.from(selectedCommentatorColumns).filter(key => allowed.has(key));
+  }
+  function getSelectedCommentatorConfig() {
+    const byKey = new Map(getCommentatorConfig().map(item => [item.key, item]));
+    return getSelectedCommentatorKeys().map(key => byKey.get(key)).filter(Boolean);
+  }
+  function setSelectedCommentatorKeys(keys) {
+    const allowed = new Set(getCommentatorConfig().map(item => item.key));
+    selectedCommentatorColumns = new Set(
+      (keys || [])
+        .map(key => String(key || '').trim())
+        .filter(key => allowed.has(key))
+    );
+    syncCommentatorColumnControls();
+  }
+  function formatCommentatorReferenceCount(count) {
+    const n = Number(count) || 0;
+    return n.toLocaleString('en-US');
+  }
+  function formatCommentatorOptionLabel(item) {
+    return `${item.label} (${formatCommentatorReferenceCount(item.referenceCount)})`;
+  }
+  function commentatorMatchesFilter(item, filterText) {
+    const terms = String(filterText || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return true;
+    const haystack = `${item.label} ${item.key}`.toLowerCase();
+    return terms.every(term => haystack.includes(term));
+  }
+  function getPendingCommentatorColumnKey() {
+    const select = document.getElementById('commentatorColumnSelect');
+    if (!select) return '';
+    if (select.value) return select.value;
+    const firstOption = Array.from(select.options).find(option => option.value);
+    return firstOption ? firstOption.value : '';
+  }
+  function decodeCommentatorsParam(raw) {
+    return String(raw || '')
+      .split(',')
+      .map(key => key.trim())
+      .filter(Boolean);
+  }
+  function addCommentatorColumn(key) {
+    const allowed = new Set(getCommentatorConfig().map(item => item.key));
+    if (!allowed.has(key) || selectedCommentatorColumns.has(key)) return false;
+    selectedCommentatorColumns.add(key);
+    commentatorColumnFilterText = '';
+    syncCommentatorColumnControls();
+    doSearch();
+    updateDeepLink();
+    return true;
+  }
+  function removeCommentatorColumn(key) {
+    if (!selectedCommentatorColumns.has(key)) return false;
+    selectedCommentatorColumns.delete(key);
+    const colKey = `commentary_${key}`;
+    getSegmentsFiltersMap().delete(colKey);
+    segmentsColumnOrder = segmentsColumnOrder.filter(item => item !== colKey);
+    syncCommentatorColumnControls();
+    doSearch();
+    updateDeepLink();
+    return true;
+  }
+  function syncCommentatorColumnControls(focusFilter = false) {
+    if (!commentatorColumnControls) return;
+    const config = getCommentatorConfig();
+    const selected = getSelectedCommentatorConfig();
+    const available = config.filter(item => !selectedCommentatorColumns.has(item.key));
+    const filteredAvailable = available.filter(item => commentatorMatchesFilter(item, commentatorColumnFilterText));
+    commentatorColumnControls.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'label-strong';
+    label.textContent = 'Find commentary:';
+    commentatorColumnControls.appendChild(label);
+    if (!config.length) {
+      const empty = document.createElement('span');
+      empty.className = 'muted';
+      empty.textContent = 'None available';
+      commentatorColumnControls.appendChild(empty);
+      return;
+    }
+    const filterInput = document.createElement('input');
+    filterInput.id = 'commentatorColumnFilter';
+    filterInput.className = 'commentator-column-filter';
+    filterInput.type = 'search';
+    filterInput.placeholder = 'Type a name...';
+    filterInput.value = commentatorColumnFilterText;
+    filterInput.setAttribute('autocomplete', 'off');
+    commentatorColumnControls.appendChild(filterInput);
+    const select = document.createElement('select');
+    select.id = 'commentatorColumnSelect';
+    select.className = 'control-select commentator-column-select';
+    select.disabled = filteredAvailable.length === 0;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    if (!available.length) {
+      placeholder.textContent = 'No more commentaries available';
+    } else if (!filteredAvailable.length) {
+      placeholder.textContent = 'No matching commentaries';
+    } else {
+      placeholder.textContent = commentatorColumnFilterText.trim()
+        ? `Choose from ${filteredAvailable.length} match${filteredAvailable.length === 1 ? '' : 'es'}...`
+        : 'Choose a commentary...';
+    }
+    select.appendChild(placeholder);
+    filteredAvailable.forEach(item => {
+      const option = document.createElement('option');
+      option.value = item.key;
+      option.textContent = formatCommentatorOptionLabel(item);
+      select.appendChild(option);
+    });
+    commentatorColumnControls.appendChild(select);
+    const addButton = document.createElement('button');
+    addButton.id = 'addCommentatorColumn';
+    addButton.type = 'button';
+    addButton.className = 'add-commentator-btn';
+    addButton.dataset.commentatorAction = 'add';
+    addButton.disabled = filteredAvailable.length === 0;
+    addButton.textContent = 'Add';
+    commentatorColumnControls.appendChild(addButton);
+    const filterCount = document.createElement('span');
+    filterCount.className = 'muted commentator-filter-count';
+    filterCount.textContent = available.length
+      ? `${filteredAvailable.length} of ${available.length} available`
+      : '0 available';
+    commentatorColumnControls.appendChild(filterCount);
+    const selectedSummary = document.createElement('span');
+    selectedSummary.id = 'selectedCommentatorColumns';
+    selectedSummary.className = 'muted selected-commentator-columns';
+    selectedSummary.textContent = selected.length
+      ? `Selected: ${selected.map(item => item.label).join(', ')}. Remove columns with × in the table header.`
+      : 'None selected';
+    commentatorColumnControls.appendChild(selectedSummary);
+    if (focusFilter) {
+      filterInput.focus();
+      const pos = filterInput.value.length;
+      try { filterInput.setSelectionRange(pos, pos); } catch (_) {}
+    }
+  }
+  function getCommentaryFieldKeys(includeIndividuals = true) {
+    const keys = ['commentary_interest'];
+    if (includeIndividuals) {
+      const commentators = includeIndividuals === 'all'
+        ? getCommentatorConfig()
+        : getSelectedCommentatorConfig();
+      commentators.forEach(item => keys.push(`commentary_${item.key}`));
+    }
+    return keys;
+  }
+  function copyCommentaryFields(source, includeIndividuals = true) {
     const out = {};
-    getCommentaryFieldKeys().forEach(key => {
+    getCommentaryFieldKeys(includeIndividuals).forEach(key => {
       const value = Number(source && source[key]);
       out[key] = Number.isFinite(value) ? value : 0;
     });
     return out;
   }
-  function addCommentaryFields(target, source) {
-    Object.assign(target, copyCommentaryFields(source));
+  function addCommentaryFields(target, source, includeIndividuals = true) {
+    Object.assign(target, copyCommentaryFields(source, includeIndividuals));
     return target;
   }
   function getCommentaryColumns() {
-    return [{ key: 'commentary_interest', label: '# comments', type: 'number', defaultDir: 'desc' }];
+    const cols = [
+      { key: 'commentary_interest', label: '# comments', type: 'number', defaultDir: 'desc' }
+    ];
+    getSelectedCommentatorConfig().forEach(item => {
+      cols.push({ key: `commentary_${item.key}`, label: item.label, type: 'number', defaultDir: 'desc', commentatorKey: item.key });
+    });
+    return cols;
   }
+  syncCommentatorColumnControls();
 
   // Precompute act/play totals (must be before applyStateFromURL which may call doSearch→denomFor)
   const actTotals = new Map();
@@ -753,14 +928,14 @@
     const k = `${r.play_id}:${r.act}`;
     actTotals.set(k, (actTotals.get(k)||0) + (r.total_words||0));
     playTotals.set(r.play_id, (playTotals.get(r.play_id)||0) + (r.total_words||0));
-    const actCommentary = actCommentaryTotals.get(k) || copyCommentaryFields(null);
-    getCommentaryFieldKeys().forEach(key => {
+    const actCommentary = actCommentaryTotals.get(k) || copyCommentaryFields(null, 'all');
+    getCommentaryFieldKeys('all').forEach(key => {
       actCommentary[key] = (actCommentary[key] || 0) + (Number(r[key]) || 0);
     });
     actCommentaryTotals.set(k, actCommentary);
     const genre = r.genre || 'unknown';
-    const genreCommentary = genreCommentaryTotals.get(genre) || copyCommentaryFields(null);
-    getCommentaryFieldKeys().forEach(key => {
+    const genreCommentary = genreCommentaryTotals.get(genre) || copyCommentaryFields(null, 'all');
+    getCommentaryFieldKeys('all').forEach(key => {
       genreCommentary[key] = (genreCommentary[key] || 0) + (Number(r[key]) || 0);
     });
     genreCommentaryTotals.set(genre, genreCommentary);
@@ -770,7 +945,7 @@
   (function applyStateFromURL(){
     const sp = new URLSearchParams(location.search);
     // New readable params first
-    if (sp.has('tab') || sp.has('q') || sp.has('ts') || sp.has('l_q') || sp.has('co')) {
+    if (sp.has('tab') || sp.has('q') || sp.has('ts') || sp.has('l_q') || sp.has('co') || sp.has('commentators')) {
       appliedDeepLinkState = true;
       try {
         // Display
@@ -788,6 +963,9 @@
         if (sp.has('zr')) {
           showZeroRows = sp.get('zr') === '1';
           if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+        }
+        if (sp.has('commentators')) {
+          setSelectedCommentatorKeys(decodeCommentatorsParam(sp.get('commentators')));
         }
         if (sp.has('ts')) {
           setActiveTermsFromRestoredState(null, decodeTermSpecsParam(sp.get('ts')), true);
@@ -848,6 +1026,9 @@
       if (typeof st.segments.showZeroRows === 'boolean') {
         showZeroRows = st.segments.showZeroRows;
         if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+      }
+      if (Array.isArray(st.segments.commentators)) {
+        setSelectedCommentatorKeys(st.segments.commentators);
       }
       if (Array.isArray(st.segments.extraTerms)) {
         extraTerms = st.segments.extraTerms.filter(Boolean);
@@ -956,6 +1137,19 @@
         removeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           removeExtraTerm(c.termIdx);
+        });
+        th.appendChild(removeBtn);
+      }
+      if (c.commentatorKey) {
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'term-col-remove';
+        removeBtn.textContent = '×';
+        removeBtn.title = `Remove ${c.label}`;
+        removeBtn.setAttribute('aria-label', `Remove ${c.label}`);
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeCommentatorColumn(c.commentatorKey);
         });
         th.appendChild(removeBtn);
       }
@@ -1876,6 +2070,26 @@
       doSearch();
     });
   }
+  if (commentatorColumnControls) {
+    commentatorColumnControls.addEventListener('input', (e) => {
+      const target = e.target;
+      if (!target || target.id !== 'commentatorColumnFilter') return;
+      commentatorColumnFilterText = target.value;
+      syncCommentatorColumnControls(true);
+    });
+    commentatorColumnControls.addEventListener('click', (e) => {
+      const action = e.target && e.target.dataset ? e.target.dataset.commentatorAction : '';
+      if (action !== 'add') return;
+      addCommentatorColumn(getPendingCommentatorColumnKey());
+    });
+    commentatorColumnControls.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const target = e.target;
+      if (!target || (target.id !== 'commentatorColumnSelect' && target.id !== 'commentatorColumnFilter')) return;
+      e.preventDefault();
+      addCommentatorColumn(getPendingCommentatorColumnKey());
+    });
+  }
   // Palette and steps options
   document.querySelectorAll('.color-scale-palette').forEach(sel => {
     sel.addEventListener('change', e => { colorScaleState.colorScalePalette = e.target.value; syncColorScaleOptions(); applyColorScalesForVisibleTables(); updateDeepLink(); });
@@ -1888,6 +2102,7 @@
   syncColorScaleOptions();
   renderAllLegends();
   if (showZeroRowsToggle) showZeroRowsToggle.checked = showZeroRows;
+  syncCommentatorColumnControls();
   updateSegmentsMatchModeUI();
   // Highlight toggle handlers
   document.querySelectorAll('.highlight-toggle').forEach(cb => {
